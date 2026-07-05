@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VideoMax Pro</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --c:#ff1a1a;--cg:rgba(255,26,26,.3);--cs:rgba(255,26,26,.1);
+  --bg:#030305;--bg2:#0a0a14;--bg3:#12121e;
+  --bd:rgba(255,255,255,.06);--bd2:rgba(255,255,255,.1);
+  --w:#f0f0f5;--w2:#a0a0b0;--w3:#606070;
+  --r:12px;
+}
+html,body{width:380px;min-height:520px;background:var(--bg);color:var(--w);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:13px}
+
+/* Header */
+.hdr{padding:18px 20px 14px;background:linear-gradient(160deg,#08081a,#120a1a);border-bottom:1px solid var(--bd2);position:relative;overflow:hidden}
+.hdr::before{content:'';position:absolute;top:-40px;right:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,26,26,.12),transparent 70%);pointer-events:none}
+.logo-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.logo-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--c),#cc0000);display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px var(--cg)}
+.logo-icon svg{width:18px;height:18px}
+.logo-t{font-size:20px;font-weight:900;background:linear-gradient(135deg,var(--c),#ff6644);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-v{font-size:10px;color:var(--w3);font-weight:600;background:var(--cs);border:1px solid var(--bd2);border-radius:99px;padding:1px 8px;display:inline-block}
+.tagline{font-size:11px;color:var(--w3);line-height:1.5;margin-top:2px}
+
+/* Status */
+.status{display:flex;align-items:center;gap:7px;margin-top:10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:8px;padding:7px 12px}
+.dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.6);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.status-t{font-size:11px;font-weight:700;color:#22c55e}
+
+/* Section */
+.sec{padding:14px 18px}
+.sec-t{font-size:9px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--w3);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.sec-t::after{content:'';flex:1;height:1px;background:var(--bd2)}
+
+/* Settings rows */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bd)}
+.set-row:last-child{border-bottom:none}
+.set-label{font-size:12px;font-weight:600;color:var(--w)}
+.set-label small{display:block;font-size:10px;color:var(--w3);font-weight:400;margin-top:1px}
+select{
+  background:var(--bg3);color:var(--w);border:1px solid var(--bd2);border-radius:8px;
+  padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;outline:none;
+  min-width:100px;
+}
+select:focus{border-color:var(--c)}
+select option{background:var(--bg2);color:var(--w)}
+
+/* Toggle */
+.toggle{position:relative;width:36px;height:20px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;inset:0;background:var(--bg3);border-radius:99px;border:1px solid var(--bd2);transition:.3s}
+.toggle .slider::before{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--w3);transition:.3s}
+.toggle input:checked+.slider{background:var(--c);border-color:var(--c)}
+.toggle input:checked+.slider::before{transform:translateX(16px);background:#fff}
+
+/* Save / Apply buttons */
+.save-btn,.apply-btn{
+  width:100%;margin-top:14px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  font-size:13px;font-weight:800;letter-spacing:.3px;color:#fff;
+  border-radius:12px;padding:13px 16px;
+  transition:transform .12s var(--t,ease),box-shadow .2s,filter .2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.save-btn{
+  background:linear-gradient(135deg,var(--c),#cc0000);
+  box-shadow:0 6px 22px var(--cg),0 1px 2px rgba(0,0,0,.4);
+}
+.save-btn svg,.apply-btn svg{width:17px;height:17px;flex-shrink:0}
+.save-btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px var(--cg)}
+.save-btn:active{transform:scale(.96)}
+.save-btn.saved{background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 6px 22px rgba(34,197,94,.4)}
+.apply-btn{
+  margin-top:9px;background:var(--bg3);color:var(--w);
+  border:1px solid var(--bd2);font-size:12px;font-weight:700;padding:11px 16px;
+}
+.apply-btn:hover{border-color:var(--c);color:#fff;background:var(--cs)}
+.apply-btn:active{transform:scale(.97)}
+.apply-btn.done{border-color:#22c55e;color:#22c55e}
+
+/* Features grid */
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.feat{background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:3px;transition:border-color .15s}
+.feat:hover{border-color:rgba(255,26,26,.2)}
+.feat-icon{font-size:16px}
+.feat-name{font-size:10.5px;font-weight:700}
+.feat-desc{font-size:9.5px;color:var(--w3);line-height:1.35}
+
+/* Shortcuts */
+.kb{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.kb-i{display:flex;align-items:center;gap:6px;padding:4px 7px;background:var(--bg3);border-radius:6px;border:1px solid var(--bd)}
+.kb-k{font-family:monospace;font-size:9px;font-weight:800;background:var(--bg2);border:1px solid var(--bd2);border-radius:4px;padding:1px 5px;color:var(--c);white-space:nowrap}
+.kb-a{font-size:9.5px;color:var(--w3)}
+
+.sep{height:1px;background:linear-gradient(to right,transparent,var(--bd2),transparent);margin:0 18px}
+
+/* Footer */
+.ftr{padding:12px 18px;text-align:center;font-size:9.5px;color:var(--w3);line-height:1.6}
+
+/* Support (contact) */
+.support-sec{padding:14px 18px}
+.support-note{font-size:11px;color:var(--w2);line-height:1.6;margin:6px 0 10px}
+.sup-btn{display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;
+  font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;color:#fff;
+  transition:transform .15s,box-shadow .15s;border:none;cursor:pointer;margin-top:8px}
+.sup-btn:hover{transform:translateY(-1px)}
+.sup-mail{background:linear-gradient(135deg,var(--c),#cc0000);box-shadow:0 4px 14px var(--cg)}
+.local-support{margin-top:4px;background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;padding:10px 12px}
+.local-row{display:flex;align-items:center;gap:6px}
+.local-lbl{font-size:10px;color:var(--w3);min-width:52px}
+.local-val{flex:1;font-size:11px;color:var(--w);background:var(--bg3);border:1px solid var(--bd);border-radius:6px;padding:5px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
+.copy-btn{font-size:10px;font-weight:700;color:var(--c);background:var(--cs);border:1px solid var(--bd2);border-radius:6px;padding:5px 10px;cursor:pointer;transition:all .15s}
+.copy-btn:hover{background:var(--c);color:#fff}
+.copy-btn.copied{background:#22c55e;color:#fff;border-color:#22c55e}
+.badges{display:flex;justify-content:center;gap:5px;margin-top:8px;flex-wrap:wrap}
+.badge{font-size:8px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:99px;background:var(--cs);border:1px solid var(--bd);color:var(--w3);text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="logo-row">
+    <div class="logo-icon"><svg viewBox="0 0 24 24" fill="white"><polygon points="6,3 20,12 6,21"/></svg></div>
+    <div>
+      <div class="logo-t">VideoMax Pro</div>
+      <div class="logo-v">v11.0</div>
+    </div>
+  </div>
+  <div class="tagline">Ultimate video enhancer for every website</div>
+  <div class="status"><div class="dot"></div><div class="status-t">Active</div></div>
+</div>
+
+<!-- Default Settings -->
+<div class="sec">
+  <div class="sec-t">Default Settings <span id="saveStatus" style="color:#22c55e;font-size:11px;font-weight:700;letter-spacing:0"></span></div>
+
+  <div class="set-row">
+    <div class="set-label">Aspect Ratio<small>Applied when VideoMax opens</small></div>
+    <select id="defAR">
+      <option value="0" selected>Default</option>
+      <option value="1">Fill</option>
+      <option value="2">Stretch</option>
+      <option value="3">Fit</option>
+      <option value="4">Zoom 1.4×</option>
+      <option value="5">Zoom 1.6×</option>
+      <option value="6">Zoom 2.0×</option>
+      <option value="7">4:3</option>
+      <option value="8">16:9</option>
+      <option value="9">2.35:1</option>
+    </select>
+  </div>
+
+  <div class="set-row">
+    <div class="set-label">Playback Speed<small>Default speed for all videos</small></div>
+    <select id="defSpeed">
+      <option value="0">0.25×</option>
+      <option value="1">0.5×</option>
+      <option value="2">0.75×</option>
+      <option value="3" selected>1× (Normal)</option>
+      <option value="4">1.25×</option>
+      <option value="5">1.5×</option>
+      <option value="6">1.75×</option>
+      <option value="7">2×</option>
+      <option value="8">2.5×</option>
+      <option value="9">3×</option>
+      <option value="10">4×</option>
+    </select>
+  </div>
+
+  <div class="set-row">
+    <div class="set-label">Video Quality<small>Preferred default quality</small></div>
+    <select id="defQuality">
+      <option value="auto" selected>Auto</option>
+      <option value="2160">4K (2160p)</option>
+      <option value="1440">1440p</option>
+      <option value="1080">1080p</option>
+      <option value="720">720p</option>
+      <option value="480">480p</option>
+      <option value="360">360p</option>
+      <option value="240">240p</option>
+      <option value="144">144p</option>
+      <option value="lowest">Lowest (data saver)</option>
+    </select>
+  </div>
+
+  <div class="set-row">
+    <div class="set-label">Auto-Resume<small>Resume playback from last position</small></div>
+    <label class="toggle"><input type="checkbox" id="defResume" checked><span class="slider"></span></label>
+  </div>
+
+  <div class="set-row">
+    <div class="set-label">Auto-Subtitles<small>Enable subtitles automatically</small></div>
+    <label class="toggle"><input type="checkbox" id="defSubs"><span class="slider"></span></label>
+  </div>
+
+  <div class="set-row">
+    <div class="set-label">Cinema Mode on Start<small>Dim page when player opens</small></div>
+    <label class="toggle"><input type="checkbox" id="defCinema"><span class="slider"></span></label>
+  </div>
+
+  <button id="saveBtn" class="save-btn" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    <span id="saveBtnLabel">Save Settings</span>
+  </button>
+  <button id="applyBtn" class="apply-btn" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 8-8 8 8 0 0 1 7.5 5.2"/><polyline points="20 4 20 9 15 9"/><path d="M20 12a8 8 0 0 1-8 8 8 8 0 0 1-7.5-5.2"/><polyline points="4 20 4 15 9 15"/></svg>
+    <span>Apply to Current Tab Now</span>
+  </button>
+</div>
+
+<div class="sep"></div>
+
+<!-- Features -->
+<div class="sec">
+  <div class="sec-t">Features</div>
+  <div class="feat-grid">
+    <div class="feat"><div class="feat-icon">⬛</div><div class="feat-name">Zero Black Bars</div><div class="feat-desc">10 aspect ratio modes</div></div>
+    <div class="feat"><div class="feat-icon">🎬</div><div class="feat-name">Quality Select</div><div class="feat-desc">144p → 8K, 10 strategies</div></div>
+    <div class="feat"><div class="feat-icon">💬</div><div class="feat-name">Subtitles</div><div class="feat-desc">Auto-detect + .srt upload</div></div>
+    <div class="feat"><div class="feat-icon">⚡</div><div class="feat-name">Hold Speed</div><div class="feat-desc">Hold ` for 2× speed</div></div>
+    <div class="feat"><div class="feat-icon">🔆</div><div class="feat-name">Brightness</div><div class="feat-desc">10% to 200% range</div></div>
+    <div class="feat"><div class="feat-icon">🔊</div><div class="feat-name">Audio Boost</div><div class="feat-desc">Up to 600% volume</div></div>
+    <div class="feat"><div class="feat-icon">🎨</div><div class="feat-name">Video Filters</div><div class="feat-desc">7 adjustable filters</div></div>
+    <div class="feat"><div class="feat-icon">🔁</div><div class="feat-name">A-B Loop</div><div class="feat-desc">Loop between two points</div></div>
+    <div class="feat"><div class="feat-icon">📺</div><div class="feat-name">PiP</div><div class="feat-desc">Picture-in-Picture</div></div>
+    <div class="feat"><div class="feat-icon">⬇️</div><div class="feat-name">Smart Download</div><div class="feat-desc">Browser · manager · player</div></div>
+    <div class="feat"><div class="feat-icon">🪞</div><div class="feat-name">Mirror</div><div class="feat-desc">Flip video horizontally</div></div>
+    <div class="feat"><div class="feat-icon">🎬</div><div class="feat-name">Cinema Mode</div><div class="feat-desc">Dim page background</div></div>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<!-- Shortcuts -->
+<div class="sec">
+  <div class="sec-t">Shortcuts (when HUD open)</div>
+  <div class="kb">
+    <div class="kb-i"><span class="kb-k">Space</span><span class="kb-a">Play/Pause</span></div>
+    <div class="kb-i"><span class="kb-k">← →</span><span class="kb-a">±10s</span></div>
+    <div class="kb-i"><span class="kb-k">↑ ↓</span><span class="kb-a">Volume</span></div>
+    <div class="kb-i"><span class="kb-k">F</span><span class="kb-a">Fullscreen</span></div>
+    <div class="kb-i"><span class="kb-k">A</span><span class="kb-a">Aspect</span></div>
+    <div class="kb-i"><span class="kb-k">S</span><span class="kb-a">Speed</span></div>
+    <div class="kb-i"><span class="kb-k">R</span><span class="kb-a">Rotate</span></div>
+    <div class="kb-i"><span class="kb-k">H</span><span class="kb-a">Mirror</span></div>
+    <div class="kb-i"><span class="kb-k">T</span><span class="kb-a">Screenshot</span></div>
+    <div class="kb-i"><span class="kb-k">` hold</span><span class="kb-a">2× speed</span></div>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<!-- ═══ SUPPORT (contact) ═══ -->
+<div class="sec support-sec">
+  <div class="sec-t">💚 Support the developer</div>
+  <p class="support-note">If VideoMax Pro is useful to you and you'd like to support it financially, reach out by email. Any support is greatly appreciated! 🙏</p>
+  <div class="local-support">
+    <div class="local-row">
+      <span class="local-lbl">📧 Email</span>
+      <code class="local-val" id="emailVal">ahmedelesily99@gmail.com</code>
+      <button class="copy-btn" data-copy="emailVal">Copy</button>
+    </div>
+    <a class="sup-btn sup-mail" id="supMail" href="mailto:ahmedelesily99@gmail.com?subject=VideoMax%20Pro%20Support" target="_blank" rel="noopener">✉️ Contact me</a>
+  </div>
+</div>
+
+<div class="sep"></div>
+
+<div class="ftr">
+  Works on any website with video
+  <div class="badges">
+    <span class="badge">MV3</span>
+    <span class="badge">Shadow DOM</span>
+    <span class="badge">No Tracking</span>
+    <span class="badge">CSP Safe</span>
+  </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
