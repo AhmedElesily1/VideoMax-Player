@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "VideoMax Pro — Video Enhancer",
   "short_name": "VideoMax Pro",
-  "version": "14.6.0",
+  "version": "20.0.0",
   "description": "Enhance any web video: aspect-ratio, zoom, speed, brightness, volume boost, subtitles, filters, PiP, gestures, HLS quality & more.",
   "icons": {
     "16":  "icons/icon16.png",

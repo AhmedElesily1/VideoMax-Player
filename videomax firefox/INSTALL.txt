@@ -1,3 +1,3 @@
-VideoMax Pro v14 — Firefox (PC + Android)
+VideoMax Pro v20 — Firefox (PC + Android)
 PC test: about:debugging#/runtime/this-firefox -> Load Temporary Add-on -> pick manifest.json.
 Permanent / Android: sign at addons.mozilla.org, then install the signed .xpi.

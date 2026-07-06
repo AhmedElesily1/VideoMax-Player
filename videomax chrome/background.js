@@ -8,7 +8,7 @@
 
 'use strict';
 
-const VM_VERSION = '11.0.0';
+const VM_VERSION = '20.0.0';
 
 /* ─── Lifecycle ─── */
 chrome.runtime.onInstalled.addListener((details) => {

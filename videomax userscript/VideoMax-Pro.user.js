@@ -2,7 +2,7 @@
 // @name         VideoMax Pro — Video Enhancer
 // @name:ar      فيديو ماكس برو — محسّن الفيديو
 // @namespace    https://videomax.app/
-// @version      14.6.0
+// @version      20.0.0
 // @description  Enhance any web video: aspect-ratio, zoom, speed, brightness, volume boost, subtitles, filters, PiP, gestures, HLS quality & more.
 // @description:ar حسّن أي فيديو على الويب: نسبة الأبعاد، التكبير، السرعة، السطوع، تعزيز الصوت، الترجمات، الفلاتر، PiP، الإيماءات، جودة HLS وأكثر.
 // @author       VideoMax
@@ -170,7 +170,7 @@
   /* ── The MAIN-world bridge code (formerly inject.js), inlined as a string.
    *    The extension injects this into the page via a <script> tag so it runs
    *    in the real page world (needed for YouTube movie_player, video.js, JW…). */
-  var VMX_INJECT_SOURCE = "/* VideoMax Pro \u2014 MAIN-world bridge.\n * Content scripts run in an ISOLATED world and cannot call page-defined\n * player APIs (YouTube's movie_player.getAvailableQualityLevels(), video.js,\n * JW Player, Plyr, hls.js instances on window, etc.). This file is injected\n * into the PAGE world so it CAN, and talks to the content script via\n * window.postMessage with the namespace \"__VMX__\".\n */\n(function () {\n  'use strict';\n  if (window.__VMX_BRIDGE__) return;\n  window.__VMX_BRIDGE__ = true;\n\n  var NS = '__VMX__';\n\n  function send(id, ok, data) {\n    try { window.postMessage({ __vmx: true, dir: 'res', id: id, ok: ok, data: data }, '*'); } catch (e) {}\n  }\n\n  /* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n   *  MAIN-WORLD NETWORK SNIFFER\n   *  The content script (isolated world) cannot see fetch/XHR made by the\n   *  page. Here in the page world we lightly wrap fetch & XMLHttpRequest to\n   *  capture media manifest/stream URLs (m3u8/mpd/mp4\u2026) and forward them to\n   *  the content script. This replaces the webRequest permission entirely \u2014\n   *  no extra permissions, works on Twitch / Facebook / cross-origin iframes.\n   * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */\n  function vmxClassify(u) {\n    if (!u || typeof u !== 'string') return null;\n    // Thumbnail preview VTT tracks are NOT subtitles \u2014 ignore them.\n    if (/thumbnail|sprite|storyboard|preview/i.test(u) && /\\.vtt/i.test(u)) return null;\n    // Subtitles / captions first (some end in query strings)\n    if (/\\.vtt(\\?|#|$)/i.test(u) || /\\.srt(\\?|#|$)/i.test(u) || /\\.(ass|ssa|ttml|dfxp|xml)(\\?|#|$)/i.test(u) && /(sub|caption|text|timedtext|cc)/i.test(u)) return 'sub';\n    if (/\\/api\\/timedtext|youtube\\.com\\/api\\/timedtext|timedtext\\?/i.test(u)) return 'sub';\n    if (/\\.m3u8(\\?|#|$)/i.test(u) || /\\/hls\\//i.test(u) || /[?&]format=m3u8/i.test(u) || /mime=application%2Fvnd\\.apple/i.test(u)) return 'hls';\n    // Twitch master/variant playlists are extensionless: *.ttvnw.net/v1/playlist/\u2026\n    if (/\\.ttvnw\\.net\\/.*\\/(?:playlist|api\\/channel\\/hls)/i.test(u) || /usher\\.ttvnw\\.net/i.test(u)) return 'hls';\n    if (/\\.mpd(\\?|#|$)/i.test(u) || /\\/dash\\//i.test(u) || /dash_manifest/i.test(u) || /DASHPlaylist/i.test(u)) return 'dash';\n    if (/\\.(mp4|webm|mkv|m4v|mov)(\\?|#|$)/i.test(u)) return 'file';\n    if (/googlevideo\\.com\\/videoplayback/i.test(u)) return 'file';\n    // Extensionless progressive video endpoints (wco.tv / wcostream getvid, etc.)\n    if (/\\/getvid\\?|\\/getvidlink|[?&]evid=/i.test(u)) return 'file';\n    // Reddit CMAF media (v.redd.it/<id>/CMAF_<h>.mp4 handled by .mp4 above)\n    return null;\n  }\n  var vmxSeen = Object.create(null);\n  function vmxReport(u) {\n    try {\n      if (!u) return;\n      var abs = u; try { abs = new URL(u, location.href).href; } catch (e) {}\n      var t = vmxClassify(abs);\n      if (!t) return;\n      if (vmxSeen[abs]) return; vmxSeen[abs] = 1;\n      var dir = (t === 'sub') ? 'subtrack' : 'media';\n      window.postMessage({ __vmx: true, dir: dir, url: abs, mtype: t }, '*');\n    } catch (e) {}\n  }\n\n  /* IMPORTANT: On YouTube/Google we DO NOT touch fetch/XHR/MediaSource.\n   * YouTube's player is extremely sensitive to prototype patching and will show\n   * a BLACK SCREEN if its media pipeline is wrapped. On YT we rely solely on the\n   * player-API bridge (getAvailableQualityLevels / captions) below, which is\n   * safe. The network sniffer is only for OTHER sites. */\n  var isYouTube = false;\n  try {\n    if (/youtube|googlevideo|ytimg/i.test(location.hostname)) isYouTube = true;\n    else if (window.top && window.top !== window) {\n      try { if (/youtube|googlevideo|ytimg/i.test(window.top.location.hostname)) isYouTube = true; } catch (e) {}\n    }\n  } catch (e) {}\n  try { if (window.yt || window.ytplayer || document.querySelector('ytd-app, ytm-app')) isYouTube = true; } catch (e) {}\n  var VMX_SKIP_NET_HOOKS = isYouTube;\n\n  if (!VMX_SKIP_NET_HOOKS) {\n    try {\n      var _fetch = window.fetch;\n      if (_fetch && !_fetch.__vmx) {\n        window.fetch = function (input, init) {\n          try { vmxReport(typeof input === 'string' ? input : (input && input.url)); } catch (e) {}\n          return _fetch.apply(this, arguments);\n        };\n        window.fetch.__vmx = true;\n        // Mask as native so sites' anti-tamper checks don't flag us.\n        try { window.fetch.toString = function () { return 'function fetch() { [native code] }'; }; } catch (e) {}\n      }\n    } catch (e) {}\n\n    try {\n      var _open = XMLHttpRequest.prototype.open;\n      if (_open && !_open.__vmx) {\n        XMLHttpRequest.prototype.open = function (method, url) {\n          try { vmxReport(url); } catch (e) {}\n          return _open.apply(this, arguments);\n        };\n        XMLHttpRequest.prototype.open.__vmx = true;\n        try { XMLHttpRequest.prototype.open.toString = function () { return 'function open() { [native code] }'; }; } catch (e) {}\n      }\n    } catch (e) {}\n\n    /* \u2550\u2550\u2550 MSE DETECTION (non-YouTube only) \u2550\u2550\u2550\n     * Flags sites using Media Source Extensions (blob: video). We only READ the\n     * mime string and pass the call straight through \u2014 but even a pass-through\n     * wrapper is risky on YT, hence it is skipped there. */\n    try {\n      if (window.MediaSource && MediaSource.prototype && !MediaSource.prototype.__vmx) {\n        var _addSB = MediaSource.prototype.addSourceBuffer;\n        MediaSource.prototype.addSourceBuffer = function (mime) {\n          try { window.postMessage({ __vmx: true, dir: 'mse', mime: String(mime || '') }, '*'); } catch (e) {}\n          return _addSB.apply(this, arguments);\n        };\n        MediaSource.prototype.__vmx = true;\n      }\n    } catch (e) {}\n  }\n\n  // \u2500\u2500 Find a YouTube player element (desktop OR mobile) \u2500\u2500\n  // Desktop: #movie_player / .html5-video-player\n  // Mobile (m.youtube.com): the player object carries class \"_msc\" and the\n  // YT API methods (getAvailableQualityLevels, etc.) live on that element.\n  function ytHasApi(el) {\n    return el && typeof el.getAvailableQualityLevels === 'function';\n  }\n  function ytPlayer() {\n    // Desktop\n    var p = document.getElementById('movie_player');\n    if (ytHasApi(p)) return p;\n    // Mobile m.youtube.com \u2014 the player object carries class \"_msc\"\n    var msc = document.getElementsByClassName('_msc');\n    for (var m = 0; m < msc.length; m++) { if (ytHasApi(msc[m])) return msc[m]; }\n    // Generic desktop/mobile player wrappers\n    p = document.querySelector('.html5-video-player') || document.querySelector('#player-container .html5-video-player');\n    if (ytHasApi(p)) return p;\n    // Last resort: scan wide for any element exposing the YT API.\n    var cands = document.querySelectorAll('._msc, .html5-video-player, [class*=\"player\"], ytd-player, ytm-app');\n    for (var i = 0; i < cands.length; i++) { if (ytHasApi(cands[i])) return cands[i]; }\n    // Walk up from the <video> element.\n    var v = document.querySelector('video');\n    var node = v;\n    while (node) { if (ytHasApi(node)) return node; node = node.parentElement; }\n    return null;\n  }\n\n  var YT_H = { highres:4320, hd2880:2880, hd2160:2160, hd1440:1440, hd1080:1080, hd720:720, large:480, medium:360, small:240, tiny:144 };\n\n  function ytGetQualities() {\n    var p = ytPlayer();\n    if (!p || typeof p.getAvailableQualityLevels !== 'function') return null;\n    var levels = p.getAvailableQualityLevels() || [];\n    var cur = '';\n    try { cur = (typeof p.getPlaybackQuality === 'function') ? p.getPlaybackQuality() : ''; } catch (e) {}\n    return {\n      cur: cur,\n      levels: levels.map(function (q) { return { id: q, height: YT_H[q] || 0 }; })\n    };\n  }\n\n  function ytSetQuality(q) {\n    var p = ytPlayer();\n    if (!p) return false;\n    // Desktop path (works directly).\n    try { if (typeof p.setPlaybackQualityRange === 'function') p.setPlaybackQualityRange(q, q); } catch (e) {}\n    try { if (typeof p.setPlaybackQuality === 'function') p.setPlaybackQuality(q); } catch (e) {}\n\n    // Mobile path: YouTube ignores setPlaybackQuality on m.youtube.com. The\n    // reliable trick (from android-youtube-player) is to write the desired\n    // quality into localStorage[\"yt-player-quality\"], then reload the video\n    // in place so the player re-reads it.\n    var isMobile = !document.getElementById('movie_player');\n    if (isMobile && q && q !== 'auto') {\n      try {\n        var now = Date.now();\n        localStorage.setItem('yt-player-quality', JSON.stringify({\n          data: q, creation: now, expiration: now + 30 * 24 * 3600 * 1000\n        }));\n      } catch (e) {}\n      // Reload current video at same time so the new quality applies.\n      try {\n        if (typeof p.getVideoData === 'function' && typeof p.loadVideoById === 'function') {\n          var vd = p.getVideoData() || {};\n          var t = (typeof p.getCurrentTime === 'function') ? p.getCurrentTime() : 0;\n          if (vd.video_id) p.loadVideoById(vd.video_id, t, q);\n        }\n      } catch (e) {}\n    } else if (isMobile && q === 'auto') {\n      try { localStorage.removeItem('yt-player-quality'); } catch (e) {}\n    }\n    return true;\n  }\n\n  function ytGetCaptions() {\n    var p = ytPlayer();\n    // 1) Official captions module (works once CC module is loaded)\n    if (p && typeof p.getOption === 'function') {\n      try {\n        var list = p.getOption('captions', 'tracklist') || p.getOption('cc', 'tracklist');\n        if (list && list.length) {\n          return list.map(function (t, i) {\n            return { i: i, name: t.displayName || t.languageName || t.languageCode || ('Track ' + (i + 1)), code: t.languageCode || '' };\n          }).filter(function (x) { return x.name; });\n        }\n      } catch (e) {}\n    }\n    // 2) Fallback: read captionTracks from the player response / ytInitialPlayerResponse\n    try {\n      var resp = null;\n      if (p && typeof p.getPlayerResponse === 'function') { try { resp = p.getPlayerResponse(); } catch (e) {} }\n      if (!resp && window.ytInitialPlayerResponse) resp = window.ytInitialPlayerResponse;\n      var tracks = resp && resp.captions && resp.captions.playerCaptionsTracklistRenderer &&\n                   resp.captions.playerCaptionsTracklistRenderer.captionTracks;\n      if (tracks && tracks.length) {\n        return tracks.map(function (t, i) {\n          var nm = (t.name && (t.name.simpleText || (t.name.runs && t.name.runs[0] && t.name.runs[0].text))) || t.languageCode || ('Track ' + (i + 1));\n          return { i: i, name: nm, code: t.languageCode || '', url: t.baseUrl || '' };\n        });\n      }\n    } catch (e) {}\n    return null;\n  }\n\n  function ytSetCaption(i) {\n    var p = ytPlayer();\n    if (!p) return false;\n    // Ensure the captions module is loaded first (needed for getOption/setOption).\n    try { if (typeof p.loadModule === 'function') p.loadModule('captions'); } catch (e) {}\n    if (typeof p.getOption === 'function' && typeof p.setOption === 'function') {\n      try {\n        if (i < 0) { p.setOption('captions', 'track', {}); return true; }\n        var list = p.getOption('captions', 'tracklist') || p.getOption('cc', 'tracklist') || [];\n        if (list && list[i]) {\n          p.setOption('captions', 'track', list[i]);\n          try { p.setOption('captions', 'reload', true); } catch (e) {}\n          return true;\n        }\n        // If tracklist not ready yet, at least toggle CC on with default track.\n        p.setOption('captions', 'track', {});\n      } catch (e) {}\n    }\n    // Fallback: click the native CC button (desktop) to toggle captions on.\n    try {\n      var btn = document.querySelector('.ytp-subtitles-button, button.ytp-subtitles-button');\n      if (btn) { btn.click(); return true; }\n    } catch (e) {}\n    return false;\n  }\n\n  // \u2500\u2500 Generic non-YouTube player detection (page world) \u2500\u2500\n  function genericGetQualities() {\n    var out = [];\n    // video.js \u2014 quality-levels plugin\n    try {\n      if (window.videojs && document.querySelector('.video-js')) {\n        var players = (window.videojs.getAllPlayers && window.videojs.getAllPlayers()) || [];\n        players.forEach(function (pl) {\n          try {\n            if (pl && pl.qualityLevels) {\n              var ql = pl.qualityLevels();\n              for (var i = 0; i < ql.length; i++) if (ql[i].height) out.push({ height: ql[i].height, kind: 'videojs-ql' });\n            }\n          } catch (e) {}\n          // video.js \u2014 sources array (vid3rb/anime3rb style: {src,label/res/type})\n          try {\n            var srcs = [];\n            if (pl.currentSources) srcs = pl.currentSources() || [];\n            if ((!srcs || !srcs.length) && pl.options_ && pl.options_.sources) srcs = pl.options_.sources;\n            (srcs || []).forEach(function (s) {\n              var lab = s.label || s.res || s.quality || s.name || '';\n              var m = String(lab).match(/(\\d{3,4})/) || String(s.src || '').match(/(\\d{3,4})p\\b/i);\n              var h = m ? parseInt(m[1], 10) : 0;\n              if (h && s.src) out.push({ height: h, url: s.src, kind: 'videojs-src' });\n            });\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    // hls.js instance commonly on window.hls\n    try {\n      var h = window.hls || (window.Hls && window._hls);\n      if (h && h.levels) h.levels.forEach(function (l) { if (l.height) out.push({ height: l.height, kind: 'hlsjs' }); });\n    } catch (e) {}\n    // JW Player (wco.tv / wcostream: labels \"576p HD\",\"720p HD\",\"1080p HD\",\n    // each source.file is an extensionless /getvid?evid=\u2026 progressive mp4).\n    try {\n      if (window.jwplayer) {\n        // Enumerate every JW instance on the page (there can be more than one).\n        var jwIds = [];\n        try {\n          document.querySelectorAll('.jwplayer, [id^=\"jwplayer\"], .jw-video, #myJwVideo').forEach(function (el) {\n            if (el.id) jwIds.push(el.id);\n          });\n        } catch (e) {}\n        if (!jwIds.length) jwIds.push(undefined); // default instance\n        jwIds.forEach(function (jid) {\n          try {\n            var jw = jid ? window.jwplayer(jid) : window.jwplayer();\n            if (!jw) return;\n            // 1) getQualityLevels \u2014 carries label + (sometimes) height\n            if (jw.getQualityLevels) {\n              (jw.getQualityLevels() || []).forEach(function (l, idx) {\n                var m = String(l.label || '').match(/(\\d{3,4})/);\n                out.push({ height: l.height || (m ? +m[1] : 0), qi: idx,\n                           label: l.label || '', kind: 'jwplayer' });\n              });\n            }\n            // 2) getPlaylistItem().sources \u2014 carries the direct file URL per quality\n            try {\n              var item = jw.getPlaylistItem && jw.getPlaylistItem();\n              var srcs = (item && item.sources) || (jw.getConfig && jw.getConfig().sources) || [];\n              srcs.forEach(function (s) {\n                var lab = s.label || s.res || '';\n                var m = String(lab).match(/(\\d{3,4})/) || String(s.file || '').match(/(\\d{3,4})p\\b/i);\n                var h = m ? parseInt(m[1], 10) : 0;\n                if ((h || lab) && s.file) out.push({ height: h, url: s.file, label: lab, kind: 'jwplayer-src' });\n              });\n            } catch (e) {}\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    // Plyr (stores quality options + source URLs)\n    try {\n      var plyrEls = document.querySelectorAll('.plyr');\n      plyrEls.forEach(function (el) {\n        var p = el.plyr || (el.__component && el.__component);\n        if (p && p.quality && p.source && p.source.sources) {\n          p.source.sources.forEach(function (s) {\n            var h = s.size || (String(s.src||'').match(/(\\d{3,4})p\\b/i)||[])[1];\n            if (h && s.src) out.push({ height: parseInt(h,10), url: s.src, kind: 'plyr' });\n          });\n        }\n      });\n    } catch (e) {}\n    // De-dupe by height, prefer entries that carry a direct URL.\n    var byH = {};\n    out.forEach(function (o) { if (!byH[o.height] || (o.url && !byH[o.height].url)) byH[o.height] = o; });\n    var res = Object.keys(byH).map(function (k) { return byH[k]; });\n    return res.length ? res : null;\n  }\n\n  function genericSetQuality(height) {\n    var ok = false;\n    // video.js \u2014 quality-levels plugin\n    try {\n      if (window.videojs) {\n        var players = (window.videojs.getAllPlayers && window.videojs.getAllPlayers()) || [];\n        players.forEach(function (pl) {\n          try {\n            if (pl && pl.qualityLevels) {\n              var ql = pl.qualityLevels();\n              for (var i = 0; i < ql.length; i++) ql[i].enabled = (ql[i].height === height);\n              ok = true;\n            }\n          } catch (e) {}\n          // video.js \u2014 swap source array entry matching the height\n          try {\n            var srcs = (pl.currentSources && pl.currentSources()) || (pl.options_ && pl.options_.sources) || [];\n            for (var k = 0; k < srcs.length; k++) {\n              var s = srcs[k];\n              var lab = s.label || s.res || s.quality || s.src || '';\n              var m = String(lab).match(/(\\d{3,4})/);\n              if (m && parseInt(m[1], 10) === height && s.src) {\n                var t = pl.currentTime ? pl.currentTime() : 0;\n                var paused = pl.paused ? pl.paused() : false;\n                pl.src({ src: s.src, type: s.type || 'video/mp4' });\n                pl.one && pl.one('loadedmetadata', function () { try { pl.currentTime(t); if (!paused) pl.play(); } catch (e) {} });\n                ok = true;\n              }\n            }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    // JW Player \u2014 match by height on the quality levels list (wco.tv/wcostream).\n    try {\n      if (window.jwplayer && !ok) {\n        var jwIds = [];\n        try {\n          document.querySelectorAll('.jwplayer, [id^=\"jwplayer\"], .jw-video, #myJwVideo').forEach(function (el) {\n            if (el.id) jwIds.push(el.id);\n          });\n        } catch (e) {}\n        if (!jwIds.length) jwIds.push(undefined);\n        jwIds.forEach(function (jid) {\n          try {\n            var jw = jid ? window.jwplayer(jid) : window.jwplayer();\n            if (jw && jw.getQualityLevels && jw.setCurrentQuality) {\n              var levels = jw.getQualityLevels() || [];\n              for (var i = 0; i < levels.length; i++) {\n                var lm = String(levels[i].label || '').match(/(\\d{3,4})/);\n                var lh = levels[i].height || (lm ? parseInt(lm[1], 10) : 0);\n                if (lh === height) { jw.setCurrentQuality(i); ok = true; break; }\n              }\n            }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    return ok;\n  }\n\n  window.addEventListener('message', function (ev) {\n    if (ev.source !== window) return;              // only same-window messages\n    var d = ev.data;\n    if (!d || d.__vmx !== true || d.dir !== 'req') return;\n    var id = d.id, cmd = d.cmd, arg = d.arg;\n    if (typeof id !== 'string' || typeof cmd !== 'string') return;\n    try {\n      switch (cmd) {\n        case 'yt-get-qualities': return send(id, true, ytGetQualities());\n        case 'yt-set-quality':   return send(id, true, ytSetQuality(arg));\n        case 'yt-get-captions':  return send(id, true, ytGetCaptions());\n        case 'yt-set-caption':   return send(id, true, ytSetCaption(arg));\n        case 'generic-qualities':return send(id, true, genericGetQualities());\n        case 'generic-set-quality': return send(id, true, genericSetQuality(arg));\n        default: return send(id, false, null);\n      }\n    } catch (e) { send(id, false, String(e)); }\n  });\n\n  // YouTube SPA navigation \u2192 tell the content script to re-scan/re-attach.\n  if (isYouTube) {\n    var _vmxAnnounceNav = function () { try { window.postMessage({ __vmx: true, dir: 'yt-navigated' }, '*'); } catch (e) {} };\n    window.addEventListener('yt-navigate-finish', _vmxAnnounceNav);\n    window.addEventListener('spfdone', _vmxAnnounceNav);\n    var _vmxLastHref = location.href;\n    setInterval(function () { if (location.href !== _vmxLastHref) { _vmxLastHref = location.href; _vmxAnnounceNav(); } }, 1000);\n  }\n\n  // Announce readiness\n  try { window.postMessage({ __vmx: true, dir: 'ready' }, '*'); } catch (e) {}\n})();\n";
+  var VMX_INJECT_SOURCE = "/* VideoMax Pro \u2014 MAIN-world bridge.\n * Content scripts run in an ISOLATED world and cannot call page-defined\n * player APIs (YouTube's movie_player.getAvailableQualityLevels(), video.js,\n * JW Player, Plyr, hls.js instances on window, etc.). This file is injected\n * into the PAGE world so it CAN, and talks to the content script via\n * window.postMessage with the namespace \"__VMX__\".\n */\n(function () {\n  'use strict';\n  if (window.__VMX_BRIDGE__) return;\n  window.__VMX_BRIDGE__ = true;\n\n  var NS = '__VMX__';\n\n  function send(id, ok, data) {\n    try { window.postMessage({ __vmx: true, dir: 'res', id: id, ok: ok, data: data }, '*'); } catch (e) {}\n  }\n\n  /* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n   *  MAIN-WORLD NETWORK SNIFFER\n   *  The content script (isolated world) cannot see fetch/XHR made by the\n   *  page. Here in the page world we lightly wrap fetch & XMLHttpRequest to\n   *  capture media manifest/stream URLs (m3u8/mpd/mp4\u2026) and forward them to\n   *  the content script. This replaces the webRequest permission entirely \u2014\n   *  no extra permissions, works on Twitch / Facebook / cross-origin iframes.\n   * \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */\n  function vmxClassify(u) {\n    if (!u || typeof u !== 'string') return null;\n    // Thumbnail preview VTT tracks are NOT subtitles \u2014 ignore them.\n    if (/thumbnail|sprite|storyboard|preview/i.test(u) && /\\.vtt/i.test(u)) return null;\n    // Subtitles / captions first (some end in query strings)\n    if (/\\.vtt(\\?|#|$)/i.test(u) || /\\.srt(\\?|#|$)/i.test(u) || /\\.(ass|ssa|ttml|dfxp|xml)(\\?|#|$)/i.test(u) && /(sub|caption|text|timedtext|cc)/i.test(u)) return 'sub';\n    if (/\\/api\\/timedtext|youtube\\.com\\/api\\/timedtext|timedtext\\?/i.test(u)) return 'sub';\n    if (/\\.m3u8(\\?|#|$)/i.test(u) || /\\/hls\\//i.test(u) || /[?&]format=m3u8/i.test(u) || /mime=application%2Fvnd\\.apple/i.test(u)) return 'hls';\n    // Twitch master/variant playlists are extensionless: *.ttvnw.net/v1/playlist/\u2026\n    if (/\\.ttvnw\\.net\\/.*\\/(?:playlist|api\\/channel\\/hls)/i.test(u) || /usher\\.ttvnw\\.net/i.test(u)) return 'hls';\n    if (/\\.mpd(\\?|#|$)/i.test(u) || /\\/dash\\//i.test(u) || /dash_manifest/i.test(u) || /DASHPlaylist/i.test(u)) return 'dash';\n    if (/\\.(mp4|webm|mkv|m4v|mov)(\\?|#|$)/i.test(u)) return 'file';\n    if (/googlevideo\\.com\\/videoplayback/i.test(u)) return 'file';\n    // Extensionless progressive video endpoints (wco.tv / wcostream getvid, etc.)\n    if (/\\/getvid\\?|\\/getvidlink|[?&]evid=/i.test(u)) return 'file';\n    // TikTok progressive MP4 (no .mp4 extension): *.tiktokcdn*/\u2026?mime_type=video_mp4 or /aweme/\n    if (/tiktokcdn|tiktokv\\.com.*\\/(?:aweme|video)|[?&]mime_type=video_mp4/i.test(u)) return 'file';\n    // Instagram / FB CDN progressive: *.cdninstagram.com / scontent*.*.fbcdn.net *.mp4 handled above\n    if (/cdninstagram\\.com\\/.*\\.(?:mp4|webm)/i.test(u)) return 'file';\n    // Dailymotion progressive/HLS handled by .m3u8/.mp4 above; catch its manifest host\n    if (/dm(?:cdn|xleo)\\.net\\/.*\\/(?:manifest|video)/i.test(u)) return 'hls';\n    // Reddit CMAF media (v.redd.it/<id>/CMAF_<h>.mp4 handled by .mp4 above)\n    return null;\n  }\n  var vmxSeen = Object.create(null);\n  function vmxReport(u) {\n    try {\n      if (!u) return;\n      var abs = u; try { abs = new URL(u, location.href).href; } catch (e) {}\n      var t = vmxClassify(abs);\n      if (!t) return;\n      if (vmxSeen[abs]) return; vmxSeen[abs] = 1;\n      var dir = (t === 'sub') ? 'subtrack' : 'media';\n      window.postMessage({ __vmx: true, dir: dir, url: abs, mtype: t }, '*');\n    } catch (e) {}\n  }\n\n  /* IMPORTANT: On YouTube/Google we DO NOT touch fetch/XHR/MediaSource.\n   * YouTube's player is extremely sensitive to prototype patching and will show\n   * a BLACK SCREEN if its media pipeline is wrapped. On YT we rely solely on the\n   * player-API bridge (getAvailableQualityLevels / captions) below, which is\n   * safe. The network sniffer is only for OTHER sites. */\n  var isYouTube = false;\n  try {\n    if (/youtube|googlevideo|ytimg/i.test(location.hostname)) isYouTube = true;\n    else if (window.top && window.top !== window) {\n      try { if (/youtube|googlevideo|ytimg/i.test(window.top.location.hostname)) isYouTube = true; } catch (e) {}\n    }\n  } catch (e) {}\n  try { if (window.yt || window.ytplayer || document.querySelector('ytd-app, ytm-app')) isYouTube = true; } catch (e) {}\n  var VMX_SKIP_NET_HOOKS = isYouTube;\n\n  if (!VMX_SKIP_NET_HOOKS) {\n    try {\n      var _fetch = window.fetch;\n      if (_fetch && !_fetch.__vmx) {\n        window.fetch = function (input, init) {\n          try { vmxReport(typeof input === 'string' ? input : (input && input.url)); } catch (e) {}\n          return _fetch.apply(this, arguments);\n        };\n        window.fetch.__vmx = true;\n        // Mask as native so sites' anti-tamper checks don't flag us.\n        try { window.fetch.toString = function () { return 'function fetch() { [native code] }'; }; } catch (e) {}\n      }\n    } catch (e) {}\n\n    try {\n      var _open = XMLHttpRequest.prototype.open;\n      if (_open && !_open.__vmx) {\n        XMLHttpRequest.prototype.open = function (method, url) {\n          try { vmxReport(url); } catch (e) {}\n          return _open.apply(this, arguments);\n        };\n        XMLHttpRequest.prototype.open.__vmx = true;\n        try { XMLHttpRequest.prototype.open.toString = function () { return 'function open() { [native code] }'; }; } catch (e) {}\n      }\n    } catch (e) {}\n\n    /* \u2550\u2550\u2550 MSE DETECTION (non-YouTube only) \u2550\u2550\u2550\n     * Flags sites using Media Source Extensions (blob: video). We only READ the\n     * mime string and pass the call straight through \u2014 but even a pass-through\n     * wrapper is risky on YT, hence it is skipped there. */\n    try {\n      if (window.MediaSource && MediaSource.prototype && !MediaSource.prototype.__vmx) {\n        var _addSB = MediaSource.prototype.addSourceBuffer;\n        MediaSource.prototype.addSourceBuffer = function (mime) {\n          try { window.postMessage({ __vmx: true, dir: 'mse', mime: String(mime || '') }, '*'); } catch (e) {}\n          return _addSB.apply(this, arguments);\n        };\n        MediaSource.prototype.__vmx = true;\n      }\n    } catch (e) {}\n  }\n\n  // \u2500\u2500 Find a YouTube player element (desktop OR mobile) \u2500\u2500\n  // Desktop: #movie_player / .html5-video-player\n  // Mobile (m.youtube.com): the player object carries class \"_msc\" and the\n  // YT API methods (getAvailableQualityLevels, etc.) live on that element.\n  function ytHasApi(el) {\n    return el && typeof el.getAvailableQualityLevels === 'function';\n  }\n  function ytPlayer() {\n    // Desktop\n    var p = document.getElementById('movie_player');\n    if (ytHasApi(p)) return p;\n    // Mobile m.youtube.com \u2014 the player object carries class \"_msc\"\n    var msc = document.getElementsByClassName('_msc');\n    for (var m = 0; m < msc.length; m++) { if (ytHasApi(msc[m])) return msc[m]; }\n    // Generic desktop/mobile player wrappers\n    p = document.querySelector('.html5-video-player') || document.querySelector('#player-container .html5-video-player');\n    if (ytHasApi(p)) return p;\n    // Last resort: scan wide for any element exposing the YT API.\n    var cands = document.querySelectorAll('._msc, .html5-video-player, [class*=\"player\"], ytd-player, ytm-app');\n    for (var i = 0; i < cands.length; i++) { if (ytHasApi(cands[i])) return cands[i]; }\n    // Walk up from the <video> element.\n    var v = document.querySelector('video');\n    var node = v;\n    while (node) { if (ytHasApi(node)) return node; node = node.parentElement; }\n    return null;\n  }\n\n  var YT_H = { highres:4320, hd2880:2880, hd2160:2160, hd1440:1440, hd1080:1080, hd720:720, large:480, medium:360, small:240, tiny:144 };\n\n  function ytGetQualities() {\n    var p = ytPlayer();\n    if (!p || typeof p.getAvailableQualityLevels !== 'function') return null;\n    var levels = p.getAvailableQualityLevels() || [];\n    var cur = '';\n    try { cur = (typeof p.getPlaybackQuality === 'function') ? p.getPlaybackQuality() : ''; } catch (e) {}\n    return {\n      cur: cur,\n      levels: levels.map(function (q) { return { id: q, height: YT_H[q] || 0 }; })\n    };\n  }\n\n  function ytSetQuality(q) {\n    var p = ytPlayer();\n    if (!p) return false;\n    // Desktop path (works directly).\n    try { if (typeof p.setPlaybackQualityRange === 'function') p.setPlaybackQualityRange(q, q); } catch (e) {}\n    try { if (typeof p.setPlaybackQuality === 'function') p.setPlaybackQuality(q); } catch (e) {}\n\n    // Mobile path: YouTube ignores setPlaybackQuality on m.youtube.com. The\n    // reliable trick (from android-youtube-player) is to write the desired\n    // quality into localStorage[\"yt-player-quality\"], then reload the video\n    // in place so the player re-reads it.\n    var isMobile = !document.getElementById('movie_player');\n    if (isMobile && q && q !== 'auto') {\n      try {\n        var now = Date.now();\n        localStorage.setItem('yt-player-quality', JSON.stringify({\n          data: q, creation: now, expiration: now + 30 * 24 * 3600 * 1000\n        }));\n      } catch (e) {}\n      // Reload current video at same time so the new quality applies.\n      try {\n        if (typeof p.getVideoData === 'function' && typeof p.loadVideoById === 'function') {\n          var vd = p.getVideoData() || {};\n          var t = (typeof p.getCurrentTime === 'function') ? p.getCurrentTime() : 0;\n          if (vd.video_id) p.loadVideoById(vd.video_id, t, q);\n        }\n      } catch (e) {}\n    } else if (isMobile && q === 'auto') {\n      try { localStorage.removeItem('yt-player-quality'); } catch (e) {}\n    }\n    return true;\n  }\n\n  function ytGetCaptions() {\n    var p = ytPlayer();\n    // 1) Official captions module (works once CC module is loaded)\n    if (p && typeof p.getOption === 'function') {\n      try {\n        var list = p.getOption('captions', 'tracklist') || p.getOption('cc', 'tracklist');\n        if (list && list.length) {\n          return list.map(function (t, i) {\n            return { i: i, name: t.displayName || t.languageName || t.languageCode || ('Track ' + (i + 1)), code: t.languageCode || '' };\n          }).filter(function (x) { return x.name; });\n        }\n      } catch (e) {}\n    }\n    // 2) Fallback: read captionTracks from the player response / ytInitialPlayerResponse\n    try {\n      var resp = null;\n      if (p && typeof p.getPlayerResponse === 'function') { try { resp = p.getPlayerResponse(); } catch (e) {} }\n      if (!resp && window.ytInitialPlayerResponse) resp = window.ytInitialPlayerResponse;\n      var tracks = resp && resp.captions && resp.captions.playerCaptionsTracklistRenderer &&\n                   resp.captions.playerCaptionsTracklistRenderer.captionTracks;\n      if (tracks && tracks.length) {\n        return tracks.map(function (t, i) {\n          var nm = (t.name && (t.name.simpleText || (t.name.runs && t.name.runs[0] && t.name.runs[0].text))) || t.languageCode || ('Track ' + (i + 1));\n          return { i: i, name: nm, code: t.languageCode || '', url: t.baseUrl || '' };\n        });\n      }\n    } catch (e) {}\n    return null;\n  }\n\n  function ytSetCaption(i) {\n    var p = ytPlayer();\n    if (!p) return false;\n    // Ensure the captions module is loaded first (needed for getOption/setOption).\n    try { if (typeof p.loadModule === 'function') p.loadModule('captions'); } catch (e) {}\n    if (typeof p.getOption === 'function' && typeof p.setOption === 'function') {\n      try {\n        if (i < 0) { p.setOption('captions', 'track', {}); return true; }\n        var list = p.getOption('captions', 'tracklist') || p.getOption('cc', 'tracklist') || [];\n        if (list && list[i]) {\n          p.setOption('captions', 'track', list[i]);\n          try { p.setOption('captions', 'reload', true); } catch (e) {}\n          return true;\n        }\n        // If tracklist not ready yet, at least toggle CC on with default track.\n        p.setOption('captions', 'track', {});\n      } catch (e) {}\n    }\n    // Fallback: click the native CC button (desktop) to toggle captions on.\n    try {\n      var btn = document.querySelector('.ytp-subtitles-button, button.ytp-subtitles-button');\n      if (btn) { btn.click(); return true; }\n    } catch (e) {}\n    return false;\n  }\n\n  // \u2500\u2500 Generic non-YouTube player detection (page world) \u2500\u2500\n  function genericGetQualities() {\n    var out = [];\n    // video.js \u2014 quality-levels plugin\n    try {\n      if (window.videojs && document.querySelector('.video-js')) {\n        var players = (window.videojs.getAllPlayers && window.videojs.getAllPlayers()) || [];\n        players.forEach(function (pl) {\n          try {\n            if (pl && pl.qualityLevels) {\n              var ql = pl.qualityLevels();\n              for (var i = 0; i < ql.length; i++) if (ql[i].height) out.push({ height: ql[i].height, kind: 'videojs-ql' });\n            }\n          } catch (e) {}\n          // video.js \u2014 sources array (vid3rb/anime3rb style: {src,label/res/type})\n          try {\n            var srcs = [];\n            if (pl.currentSources) srcs = pl.currentSources() || [];\n            if ((!srcs || !srcs.length) && pl.options_ && pl.options_.sources) srcs = pl.options_.sources;\n            (srcs || []).forEach(function (s) {\n              var lab = s.label || s.res || s.quality || s.name || '';\n              var m = String(lab).match(/(\\d{3,4})/) || String(s.src || '').match(/(\\d{3,4})p\\b/i);\n              var h = m ? parseInt(m[1], 10) : 0;\n              if (h && s.src) out.push({ height: h, url: s.src, kind: 'videojs-src' });\n            });\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    // hls.js instance commonly on window.hls\n    try {\n      var h = window.hls || (window.Hls && window._hls);\n      if (h && h.levels) h.levels.forEach(function (l) { if (l.height) out.push({ height: l.height, kind: 'hlsjs' }); });\n    } catch (e) {}\n    // JW Player (wco.tv / wcostream: labels \"576p HD\",\"720p HD\",\"1080p HD\",\n    // each source.file is an extensionless /getvid?evid=\u2026 progressive mp4).\n    try {\n      if (window.jwplayer) {\n        // Enumerate every JW instance on the page (there can be more than one).\n        var jwIds = [];\n        try {\n          document.querySelectorAll('.jwplayer, [id^=\"jwplayer\"], .jw-video, #myJwVideo').forEach(function (el) {\n            if (el.id) jwIds.push(el.id);\n          });\n        } catch (e) {}\n        if (!jwIds.length) jwIds.push(undefined); // default instance\n        jwIds.forEach(function (jid) {\n          try {\n            var jw = jid ? window.jwplayer(jid) : window.jwplayer();\n            if (!jw) return;\n            // 1) getQualityLevels \u2014 carries label + (sometimes) height\n            if (jw.getQualityLevels) {\n              (jw.getQualityLevels() || []).forEach(function (l, idx) {\n                var m = String(l.label || '').match(/(\\d{3,4})/);\n                out.push({ height: l.height || (m ? +m[1] : 0), qi: idx,\n                           label: l.label || '', kind: 'jwplayer' });\n              });\n            }\n            // 2) getPlaylistItem().sources \u2014 carries the direct file URL per quality\n            try {\n              var item = jw.getPlaylistItem && jw.getPlaylistItem();\n              var srcs = (item && item.sources) || (jw.getConfig && jw.getConfig().sources) || [];\n              srcs.forEach(function (s) {\n                var lab = s.label || s.res || '';\n                var m = String(lab).match(/(\\d{3,4})/) || String(s.file || '').match(/(\\d{3,4})p\\b/i);\n                var h = m ? parseInt(m[1], 10) : 0;\n                if ((h || lab) && s.file) out.push({ height: h, url: s.file, label: lab, kind: 'jwplayer-src' });\n              });\n            } catch (e) {}\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    // Plyr (stores quality options + source URLs)\n    try {\n      var plyrEls = document.querySelectorAll('.plyr');\n      plyrEls.forEach(function (el) {\n        var p = el.plyr || (el.__component && el.__component);\n        if (p && p.quality && p.source && p.source.sources) {\n          p.source.sources.forEach(function (s) {\n            var h = s.size || (String(s.src||'').match(/(\\d{3,4})p\\b/i)||[])[1];\n            if (h && s.src) out.push({ height: parseInt(h,10), url: s.src, kind: 'plyr' });\n          });\n        }\n      });\n    } catch (e) {}\n\n    // \u2500\u2500 dash.js (window.dashjs / player instances) \u2500\u2500\n    try {\n      // dash.js players commonly stored on elements or window.player / window.dashPlayer.\n      var dashCandidates = [];\n      if (window.player && window.player.getBitrateInfoListFor) dashCandidates.push(window.player);\n      if (window.dashPlayer && window.dashPlayer.getBitrateInfoListFor) dashCandidates.push(window.dashPlayer);\n      // Any global that looks like a dash.js MediaPlayer.\n      for (var gk in window) {\n        try {\n          var g = window[gk];\n          if (g && typeof g === 'object' && typeof g.getBitrateInfoListFor === 'function' && dashCandidates.indexOf(g) === -1) {\n            dashCandidates.push(g);\n          }\n        } catch (e) {}\n      }\n      dashCandidates.forEach(function (dp) {\n        try {\n          var list = dp.getBitrateInfoListFor('video') || [];\n          list.forEach(function (b) { if (b.height) out.push({ height: b.height, kind: 'dashjs' }); });\n        } catch (e) {}\n      });\n    } catch (e) {}\n\n    // \u2500\u2500 Shaka Player (getVariantTracks) \u2500\u2500\n    try {\n      var shakaCandidates = [];\n      if (window.shaka && window.shakaPlayer && window.shakaPlayer.getVariantTracks) shakaCandidates.push(window.shakaPlayer);\n      for (var sk in window) {\n        try {\n          var sg = window[sk];\n          if (sg && typeof sg === 'object' && typeof sg.getVariantTracks === 'function' && shakaCandidates.indexOf(sg) === -1) shakaCandidates.push(sg);\n        } catch (e) {}\n      }\n      shakaCandidates.forEach(function (sp) {\n        try {\n          (sp.getVariantTracks() || []).forEach(function (t) { if (t.height) out.push({ height: t.height, kind: 'shaka' }); });\n        } catch (e) {}\n      });\n    } catch (e) {}\n\n    // \u2500\u2500 Clappr (getPlaybackQuality / level list) \u2500\u2500\n    try {\n      var clapprCandidates = [];\n      if (window.player && window.player.getPlaybackQuality) clapprCandidates.push(window.player);\n      for (var ck in window) {\n        try {\n          var cg = window[ck];\n          if (cg && typeof cg === 'object' && typeof cg.getPlaybackQuality === 'function' && clapprCandidates.indexOf(cg) === -1) clapprCandidates.push(cg);\n        } catch (e) {}\n      }\n      clapprCandidates.forEach(function (cp) {\n        try {\n          var lv = cp.core && cp.core.activePlayback && cp.core.activePlayback.levels;\n          (lv || []).forEach(function (l) { if (l.height) out.push({ height: l.height, kind: 'clappr' }); });\n        } catch (e) {}\n      });\n    } catch (e) {}\n\n    // \u2500\u2500 Flowplayer (qualities / hls levels) \u2500\u2500\n    try {\n      if (window.flowplayer) {\n        var fpEls = document.querySelectorAll('.flowplayer, .fp-player, [data-flowplayer]');\n        fpEls.forEach(function (el) {\n          try {\n            var fp = window.flowplayer(el);\n            if (fp && fp.qualities && fp.qualities.length) {\n              fp.qualities.forEach(function (q) {\n                var m = String(q.label || q).match(/(\\d{3,4})/);\n                if (m) out.push({ height: parseInt(m[1], 10), kind: 'flowplayer' });\n              });\n            } else if (fp && fp.hlsjs && fp.hlsjs.levels) {\n              fp.hlsjs.levels.forEach(function (l) { if (l.height) out.push({ height: l.height, kind: 'flowplayer-hls' }); });\n            }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n\n    // \u2500\u2500 Generic: ANY hls.js instance stashed on an element (._hls / .hls) \u2500\u2500\n    try {\n      document.querySelectorAll('video, .video-js, [class*=\"player\"]').forEach(function (el) {\n        var h = el._hls || el.hls || (el.player && el.player.hls);\n        if (h && h.levels) h.levels.forEach(function (l) { if (l.height) out.push({ height: l.height, url: (l.url && l.url[0]) || '', kind: 'hlsjs-el' }); });\n      });\n    } catch (e) {}\n\n    // De-dupe by height, prefer entries that carry a direct URL.\n    var byH = {};\n    out.forEach(function (o) { if (!byH[o.height] || (o.url && !byH[o.height].url)) byH[o.height] = o; });\n    var res = Object.keys(byH).map(function (k) { return byH[k]; });\n    return res.length ? res : null;\n  }\n\n  function genericSetQuality(height) {\n    var ok = false;\n    // video.js \u2014 quality-levels plugin\n    try {\n      if (window.videojs) {\n        var players = (window.videojs.getAllPlayers && window.videojs.getAllPlayers()) || [];\n        players.forEach(function (pl) {\n          try {\n            if (pl && pl.qualityLevels) {\n              var ql = pl.qualityLevels();\n              for (var i = 0; i < ql.length; i++) ql[i].enabled = (ql[i].height === height);\n              ok = true;\n            }\n          } catch (e) {}\n          // video.js \u2014 swap source array entry matching the height\n          try {\n            var srcs = (pl.currentSources && pl.currentSources()) || (pl.options_ && pl.options_.sources) || [];\n            for (var k = 0; k < srcs.length; k++) {\n              var s = srcs[k];\n              var lab = s.label || s.res || s.quality || s.src || '';\n              var m = String(lab).match(/(\\d{3,4})/);\n              if (m && parseInt(m[1], 10) === height && s.src) {\n                var t = pl.currentTime ? pl.currentTime() : 0;\n                var paused = pl.paused ? pl.paused() : false;\n                pl.src({ src: s.src, type: s.type || 'video/mp4' });\n                pl.one && pl.one('loadedmetadata', function () { try { pl.currentTime(t); if (!paused) pl.play(); } catch (e) {} });\n                ok = true;\n              }\n            }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n    // JW Player \u2014 match by height on the quality levels list (wco.tv/wcostream).\n    try {\n      if (window.jwplayer && !ok) {\n        var jwIds = [];\n        try {\n          document.querySelectorAll('.jwplayer, [id^=\"jwplayer\"], .jw-video, #myJwVideo').forEach(function (el) {\n            if (el.id) jwIds.push(el.id);\n          });\n        } catch (e) {}\n        if (!jwIds.length) jwIds.push(undefined);\n        jwIds.forEach(function (jid) {\n          try {\n            var jw = jid ? window.jwplayer(jid) : window.jwplayer();\n            if (jw && jw.getQualityLevels && jw.setCurrentQuality) {\n              var levels = jw.getQualityLevels() || [];\n              for (var i = 0; i < levels.length; i++) {\n                var lm = String(levels[i].label || '').match(/(\\d{3,4})/);\n                var lh = levels[i].height || (lm ? parseInt(lm[1], 10) : 0);\n                if (lh === height) { jw.setCurrentQuality(i); ok = true; break; }\n              }\n            }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n\n    // dash.js \u2014 setQualityFor by matching height \u2192 qualityIndex\n    try {\n      if (!ok) {\n        var dcs = [];\n        if (window.player && window.player.getBitrateInfoListFor) dcs.push(window.player);\n        for (var dgk in window) { try { var dg = window[dgk]; if (dg && typeof dg === 'object' && typeof dg.getBitrateInfoListFor === 'function' && dcs.indexOf(dg) === -1) dcs.push(dg); } catch (e) {} }\n        dcs.forEach(function (dp) {\n          try {\n            var list = dp.getBitrateInfoListFor('video') || [];\n            for (var i = 0; i < list.length; i++) {\n              if (list[i].height === height) {\n                try { dp.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } }); } catch (e) {}\n                if (dp.setQualityFor) dp.setQualityFor('video', list[i].qualityIndex, true);\n                ok = true; break;\n              }\n            }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n\n    // Shaka \u2014 selectVariantTrack for the matching height (disable ABR first)\n    try {\n      if (!ok) {\n        var scs = [];\n        if (window.shakaPlayer && window.shakaPlayer.getVariantTracks) scs.push(window.shakaPlayer);\n        for (var sgk in window) { try { var sg2 = window[sgk]; if (sg2 && typeof sg2 === 'object' && typeof sg2.getVariantTracks === 'function' && scs.indexOf(sg2) === -1) scs.push(sg2); } catch (e) {} }\n        scs.forEach(function (sp) {\n          try {\n            var tracks = sp.getVariantTracks() || [];\n            var match = tracks.filter(function (t) { return t.height === height; })[0];\n            if (match) { try { sp.configure({ abr: { enabled: false } }); } catch (e) {} sp.selectVariantTrack(match, true); ok = true; }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n\n    // Clappr \u2014 setPlaybackQuality by level index whose height matches\n    try {\n      if (!ok) {\n        var ccs = [];\n        if (window.player && window.player.getPlaybackQuality) ccs.push(window.player);\n        for (var cgk in window) { try { var cg2 = window[cgk]; if (cg2 && typeof cg2 === 'object' && typeof cg2.setPlaybackQuality === 'function' && ccs.indexOf(cg2) === -1) ccs.push(cg2); } catch (e) {} }\n        ccs.forEach(function (cp) {\n          try {\n            var lv = cp.core && cp.core.activePlayback && cp.core.activePlayback.levels;\n            if (lv) for (var i = 0; i < lv.length; i++) { if (lv[i].height === height) { cp.setPlaybackQuality(lv[i].level != null ? lv[i].level : i); ok = true; break; } }\n          } catch (e) {}\n        });\n      }\n    } catch (e) {}\n\n    // Generic hls.js instance on an element\n    try {\n      if (!ok) {\n        document.querySelectorAll('video, .video-js, [class*=\"player\"]').forEach(function (el) {\n          var h = el._hls || el.hls || (el.player && el.player.hls);\n          if (h && h.levels) for (var i = 0; i < h.levels.length; i++) { if (h.levels[i].height === height) { h.currentLevel = i; ok = true; break; } }\n        });\n      }\n    } catch (e) {}\n\n    return ok;\n  }\n\n  window.addEventListener('message', function (ev) {\n    if (ev.source !== window) return;              // only same-window messages\n    var d = ev.data;\n    if (!d || d.__vmx !== true || d.dir !== 'req') return;\n    var id = d.id, cmd = d.cmd, arg = d.arg;\n    if (typeof id !== 'string' || typeof cmd !== 'string') return;\n    try {\n      switch (cmd) {\n        case 'yt-get-qualities': return send(id, true, ytGetQualities());\n        case 'yt-set-quality':   return send(id, true, ytSetQuality(arg));\n        case 'yt-get-captions':  return send(id, true, ytGetCaptions());\n        case 'yt-set-caption':   return send(id, true, ytSetCaption(arg));\n        case 'generic-qualities':return send(id, true, genericGetQualities());\n        case 'generic-set-quality': return send(id, true, genericSetQuality(arg));\n        default: return send(id, false, null);\n      }\n    } catch (e) { send(id, false, String(e)); }\n  });\n\n  // YouTube SPA navigation \u2192 tell the content script to re-scan/re-attach.\n  if (isYouTube) {\n    var _vmxAnnounceNav = function () { try { window.postMessage({ __vmx: true, dir: 'yt-navigated' }, '*'); } catch (e) {} };\n    window.addEventListener('yt-navigate-finish', _vmxAnnounceNav);\n    window.addEventListener('spfdone', _vmxAnnounceNav);\n    var _vmxLastHref = location.href;\n    setInterval(function () { if (location.href !== _vmxLastHref) { _vmxLastHref = location.href; _vmxAnnounceNav(); } }, 1000);\n  }\n\n  // Announce readiness\n  try { window.postMessage({ __vmx: true, dir: 'ready' }, '*'); } catch (e) {}\n})();\n";
 
   // Inject the page-world bridge immediately (document-start).
   function vmxInjectBridge() {
@@ -274,7 +274,85 @@
    * ═══════════════════════════════════════════════════════════════ */
   var VMX_DEBUG = false;
   var _dbgEl = null, _dbgLines = {};
+
+  /* ═══════════════════════════════════════════════════════════════
+   *  DIAGNOSTIC LOG SYSTEM  (always-on ring buffer, exportable)
+   *  Records timestamped events into a bounded in-memory buffer with rich
+   *  environment info. The user can EXPORT it as a .txt file (from the 3-dots
+   *  menu → "Export diagnostics", or Ctrl+Alt+D) and send it to us so we can see
+   *  exactly what happened on any site (PC or Android) and improve the extension.
+   *  Cheap: just pushes strings; capped at 600 entries. No network, no tracking.
+   * ═══════════════════════════════════════════════════════════════ */
+  var VMX_LOG = (function () {
+    var buf = [];
+    var MAX = 600;
+    var t0 = Date.now();
+    function push(cat, msg) {
+      try {
+        var t = ((Date.now() - t0) / 1000).toFixed(2);
+        buf.push('[' + t + 's] ' + (cat || '·') + ' | ' + msg);
+        if (buf.length > MAX) buf.shift();
+      } catch (e) {}
+    }
+    function env() {
+      var L = [];
+      try {
+        L.push('VideoMax Pro diagnostics — build ' + (VMX_BUILD || '?'));
+        L.push('when: ' + new Date().toISOString());
+        L.push('url: ' + location.href);
+        L.push('host: ' + location.hostname);
+        L.push('userAgent: ' + navigator.userAgent);
+        L.push('platform: ' + (navigator.platform || '?') + '  lang: ' + (navigator.language || '?'));
+        L.push('screen: ' + screen.width + 'x' + screen.height + '  window: ' + window.innerWidth + 'x' + window.innerHeight + '  dpr: ' + (window.devicePixelRatio || 1));
+        L.push('touch: ' + (('ontouchstart' in window) || navigator.maxTouchPoints > 0) + '  maxTouchPoints: ' + (navigator.maxTouchPoints || 0));
+        try {
+          L.push('flags: IS_MOBILE=' + IS_MOBILE + ' IS_MOBILE_SITE=' + IS_MOBILE_SITE + ' IS_MOBILE_UA=' + IS_MOBILE_UA +
+                 ' domMobile=' + hasMobilePlayerDOM());
+          L.push('site: YT=' + IS_YOUTUBE + ' Twitch=' + IS_TWITCH + ' FB=' + IS_FACEBOOK + ' Reddit=' + IS_REDDIT +
+                 ' TikTok=' + IS_TIKTOK + ' IG=' + IS_INSTAGRAM + ' DM=' + IS_DAILYMOTION + ' okru=' + IS_OKRU +
+                 ' bili=' + IS_BILIBILI + ' DRM=' + IS_DRM_SITE);
+        } catch (e) { L.push('flags: (not ready) ' + e); }
+        try {
+          var vids = document.querySelectorAll('video');
+          L.push('videos on page: ' + vids.length);
+          Array.prototype.slice.call(vids, 0, 6).forEach(function (v, i) {
+            var r = v.getBoundingClientRect();
+            var inShadow = false; try { inShadow = v.getRootNode() instanceof ShadowRoot; } catch (e) {}
+            L.push('  video[' + i + ']: ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+                   ' vw=' + v.videoWidth + 'x' + v.videoHeight + ' paused=' + v.paused +
+                   ' src=' + String(v.currentSrc || v.src || '').slice(0, 60) + ' shadow=' + inShadow +
+                   ' parent=' + (v.parentElement ? v.parentElement.tagName + '.' + (String(v.parentElement.className).slice(0, 30)) : '?'));
+          });
+        } catch (e) { L.push('videos: err ' + e); }
+        L.push('fullscreenEl: ' + (document.fullscreenElement ? (document.fullscreenElement.tagName + '.' + String(document.fullscreenElement.className).slice(0,30)) : 'none'));
+        try { L.push('siteProfile: ' + JSON.stringify(SiteProfiles.get())); } catch (e) {}
+      } catch (e) { L.push('env error: ' + e); }
+      return L.join('\n');
+    }
+    function build() {
+      return env() + '\n\n───── EVENT LOG (' + buf.length + ') ─────\n' + buf.join('\n') + '\n';
+    }
+    function exportTxt() {
+      try {
+        var text = build();
+        var blob = new Blob([text], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'videomax-diagnostics-' + location.hostname + '-' + Date.now() + '.txt';
+        (document.body || document.documentElement).appendChild(a);
+        a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        return true;
+      } catch (e) { return false; }
+    }
+    return { push: push, build: build, exportTxt: exportTxt };
+  })();
+
   function vmxDebug(key, msg) {
+    // Always record to the exportable diagnostic buffer…
+    try { VMX_LOG.push(key, msg); } catch (e) {}
+    // …and only render the on-screen red badge when VMX_DEBUG is on.
     if (!VMX_DEBUG) return;
     try {
       if (window.top !== window) return;  // only show in the top frame
@@ -293,7 +371,7 @@
       _dbgEl.textContent = out;
     } catch (e) {}
   }
-  var VMX_BUILD = '14.6';
+  var VMX_BUILD = '20.0';
 
   // Site detection
   const HOSTNAME = location.hostname;
@@ -304,6 +382,20 @@
   const IS_VIMEO    = /vimeo\.com/.test(HOSTNAME);
   const IS_TWITTER  = /(^|\.)(x\.com|twitter\.com)$/.test(HOSTNAME) || /twitter\.com|x\.com/.test(HOSTNAME);
   const IS_REDDIT   = /reddit\.com|redd\.it/.test(HOSTNAME);
+  const IS_TIKTOK   = /tiktok\.com/.test(HOSTNAME);
+  const IS_INSTAGRAM= /instagram\.com/.test(HOSTNAME);
+  const IS_DAILYMOTION = /dailymotion\.com|dai\.ly/.test(HOSTNAME);
+  const IS_OKRU    = /(^|\.)ok\.ru$|odnoklassniki\.ru/.test(HOSTNAME);
+  const IS_BILIBILI= /bilibili\.(com|tv)/.test(HOSTNAME);
+  const IS_RUMBLE  = /rumble\.com/.test(HOSTNAME);
+  const IS_ODYSEE  = /odysee\.com/.test(HOSTNAME);
+
+  // DRM / encrypted-streaming platforms. Their video is delivered ENCRYPTED via
+  // EME (Widevine/FairPlay/PlayReady); it can never be saved and enhancement is
+  // limited. We detect them only to show an honest notice instead of failing
+  // silently — we never attempt to bypass DRM (illegal + store-banning).
+  const IS_DRM_SITE = /(^|\.)(netflix\.com|disneyplus\.com|hotstar\.com|primevideo\.com|amazon\.[a-z.]+|max\.com|hbomax\.com|hulu\.com|tv\.apple\.com|peacocktv\.com|paramountplus\.com|crunchyroll\.com|shahid\.net|shahid\.mbc\.net|watchit\.com|starzplay\.com|osnplus\.com)$/i.test(HOSTNAME)
+    || /disneyplus|primevideo|hbomax|peacocktv|paramountplus/i.test(HOSTNAME);
 
   // Speed options
   const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
@@ -536,6 +628,8 @@
         source: source,
         time: Date.now()
       });
+      // LEARN the media-URL shape for this site (faster future detection).
+      try { if (typeof SiteProfiles !== 'undefined') SiteProfiles.addMediaHint(url); } catch (e) {}
     }
   }
 
@@ -694,6 +788,163 @@
 
   /* ── Aliases (fix legacy references) ── */
   const S = Store;                       // [BUGFIX] `S` was used but never defined
+
+  /* ═══════════════════════════════════════════════════════════════
+   *  SITE PROFILE ENGINE  (smart, self-learning, remembers per site)
+   *
+   *  The extension LEARNS what works on each hostname and CACHES it, so the
+   *  next visit applies the known-good strategy instantly instead of
+   *  re-discovering it. Profiles persist across sessions via Store
+   *  (chrome.storage / GM_setValue). A profile records:
+   *    • container selector that successfully wrapped the player
+   *    • whether the floating-host was needed
+   *    • the media/manifest URL shapes seen (for faster quality/download)
+   *    • the last confirmed video CSS selector
+   *    • a "health" score + version so we can self-heal / re-learn if the site
+   *      changes and the cached strategy stops working.
+   *  This is the "solve once, remember forever" behaviour.
+   * ═══════════════════════════════════════════════════════════════ */
+  const SiteProfiles = (function () {
+    var PKEY = 'siteprofiles_v1';
+    var PROFILE_SCHEMA = 3;              // bump to invalidate all old profiles
+    var all = null;                     // { host: {profile} }
+    var host = location.hostname.replace(/^www\./, '');
+    var dirty = false;
+    var saveTimer = null;
+
+    function load() {
+      if (all) return all;
+      all = S.get(PKEY, null) || {};
+      // Drop profiles from an older schema (site DOMs / our logic changed).
+      try {
+        Object.keys(all).forEach(function (h) {
+          if (!all[h] || all[h].v !== PROFILE_SCHEMA) delete all[h];
+        });
+      } catch (e) {}
+      return all;
+    }
+
+    function current() {
+      load();
+      if (!all[host]) {
+        all[host] = { v: PROFILE_SCHEMA, host: host, created: Date.now(),
+          containerSel: '', floating: null, videoSel: '', mediaHints: [],
+          uses: 0, wins: 0, fails: 0, lastSeen: 0 };
+    }
+      all[host].lastSeen = Date.now();
+      all[host].uses = (all[host].uses || 0) + 1;
+      return all[host];
+    }
+
+    function scheduleSave() {
+      dirty = true;
+      if (saveTimer) return;
+      saveTimer = setTimeout(function () {
+        saveTimer = null;
+        if (!dirty) return; dirty = false;
+        try {
+          // Prune: keep the 200 most-recent hosts to bound storage.
+          var keys = Object.keys(all);
+          if (keys.length > 200) {
+            keys.sort(function (a, b) { return (all[a].lastSeen || 0) - (all[b].lastSeen || 0); });
+            keys.slice(0, keys.length - 200).forEach(function (k) { delete all[k]; });
+          }
+          S.set(PKEY, all);
+        } catch (e) {}
+      }, 1200);
+    }
+
+    // Build a stable, reusable CSS selector for an element (id → unique class → path).
+    function selectorFor(el) {
+      if (!el || el.nodeType !== 1) return '';
+      try {
+        if (el.id && /^[A-Za-z][\w-]*$/.test(el.id)) return '#' + el.id;
+        var parts = [], node = el, depth = 0;
+        while (node && node.nodeType === 1 && depth < 4 && node !== document.body) {
+          var seg = node.tagName.toLowerCase();
+          // Prefer a stable-looking class (skip hashed/utility churn).
+          var cls = (node.className && typeof node.className === 'string')
+            ? node.className.trim().split(/\s+/).filter(function (c) {
+                return c && c.length >= 3 && c.length <= 30 && !/^(vm-|ng-|css-|sc-)/.test(c);
+              })[0] : '';
+          if (cls) seg += '.' + cls;
+          parts.unshift(seg);
+          if (node.id) { parts[0] = '#' + node.id; break; }
+          node = node.parentElement; depth++;
+        }
+        return parts.join(' > ');
+      } catch (e) { return ''; }
+    }
+
+    return {
+      get: current,
+      // Record a successful attach so future visits are instant.
+      recordWin: function (info) {
+        try {
+          var p = current();
+          if (info.container) { var sel = selectorFor(info.container); if (sel) p.containerSel = sel; }
+          if (info.video)     { var vsel = selectorFor(info.video); if (vsel) p.videoSel = vsel; }
+          if (typeof info.floating === 'boolean') p.floating = info.floating;
+          p.wins = (p.wins || 0) + 1;
+          scheduleSave();
+        } catch (e) {}
+      },
+      recordFail: function () { try { var p = current(); p.fails = (p.fails || 0) + 1; scheduleSave(); } catch (e) {} },
+      // Remember a media/manifest URL shape (host + extension) for faster future detection.
+      addMediaHint: function (url) {
+        try {
+          var p = current();
+          var u = new URL(url, location.href);
+          var hint = u.hostname + '|' + (u.pathname.match(/\.[a-z0-9]{2,5}($|\?)/i) || ['?'])[0];
+          if (p.mediaHints.indexOf(hint) === -1) { p.mediaHints.push(hint); if (p.mediaHints.length > 12) p.mediaHints.shift(); scheduleSave(); }
+        } catch (e) {}
+      },
+      // Try the cached container first (fast path). Returns element or null.
+      cachedContainer: function () {
+        try { var p = current(); if (p.containerSel) return document.querySelector(p.containerSel); } catch (e) {}
+        return null;
+      },
+      cachedFloating: function () { try { return current().floating; } catch (e) { return null; } },
+      // Confidence: has this profile reliably worked before?
+      isTrusted: function () { try { var p = current(); return (p.wins || 0) >= 2 && (p.wins) > (p.fails || 0); } catch (e) { return false; } },
+
+      /* ── SELF-REPAIR MEMORY ──
+       * Remembers which remedy fixed which symptom on this site, so next time the
+       * same symptom appears we apply the known-good remedy FIRST (instant fix)
+       * instead of trying every remedy again. Structure:
+       *   p.fixes = { "<symptom>": { remedy:"<name>", wins:N, fails:N, ts } } */
+      getFix: function (symptom) {
+        try { var p = current(); return (p.fixes && p.fixes[symptom]) || null; } catch (e) { return null; }
+      },
+      // A remembered remedy is trusted once it has fixed the symptom at least once
+      // and hasn't been failing more than it succeeds.
+      trustedFix: function (symptom) {
+        try {
+          var f = this.getFix(symptom);
+          return (f && f.remedy && (f.wins || 0) >= 1 && (f.wins) >= (f.fails || 0)) ? f.remedy : null;
+        } catch (e) { return null; }
+      },
+      recordFixResult: function (symptom, remedy, ok) {
+        try {
+          var p = current();
+          p.fixes = p.fixes || {};
+          var f = p.fixes[symptom] || (p.fixes[symptom] = { remedy: remedy, wins: 0, fails: 0, ts: 0 });
+          if (ok) {
+            // A winning remedy becomes (or stays) the remembered one.
+            if (f.remedy !== remedy) { f.remedy = remedy; f.fails = 0; }
+            f.wins = (f.wins || 0) + 1;
+          } else {
+            f.fails = (f.fails || 0) + 1;
+            // If the remembered remedy keeps failing, forget it so we re-explore.
+            if (f.remedy === remedy && f.fails >= 3) { f.remedy = ''; f.wins = 0; }
+          }
+          f.ts = Date.now();
+          scheduleSave();
+        } catch (e) {}
+      }
+    };
+  })();
+
   function fmt(seconds) { return formatTime(seconds); } // [BUGFIX] `fmt` was used but never defined
 
   /* ══════════════════════════════════════════════════
@@ -1472,6 +1723,61 @@
   }
 
 
+  // If `el` lives inside a shadow root, return the outermost shadow HOST element
+  // (which lives in the light DOM), else null. Lets us anchor overlays in the
+  // regular DOM even when the <video> is buried in a web-component's shadow tree
+  // (e.g. Reddit's <shreddit-player>).
+  function shadowHostOf(el) {
+    var host = null, node = el;
+    try {
+      for (var i = 0; i < 8 && node; i++) {
+        var root = node.getRootNode && node.getRootNode();
+        if (root && root.host) { host = root.host; node = root.host; }
+        else break;
+      }
+    } catch (e) {}
+    return host;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+   *  UNIVERSAL SMART CONTAINER DETECTOR
+   *  Finds the true player wrapper on ANY website with zero site-specific
+   *  knowledge. Strategy:
+   *   1) Climb ancestors looking for a "player-like" element (class/id/attribute
+   *      contains player|video|media|jw|plyr|vjs|shaka|artplayer + it wraps the
+   *      video and is roughly the video's size).
+   *   2) If none, pick the smallest ancestor whose box closely matches the
+   *      video's rendered box (so overlay/controls cover the whole player, not a
+   *      tiny wrapper or the whole page).
+   *  Returns an element or null (caller keeps its fallback).
+   * ═══════════════════════════════════════════════════════════════ */
+  function smartFindContainer(video) {
+    try {
+      var vr = video.getBoundingClientRect();
+      var vArea = (vr.width || 0) * (vr.height || 0);
+      if (vArea < 400) return null;                 // video too small/not laid out yet
+      var PLAYER_RE = /(player|video-?player|media-?player|videowrapper|video-?container|jwplayer|plyr|vjs|video-js|shaka|artplayer|dplayer|xgplayer|flowplayer|clappr)/i;
+      var node = video.parentElement, hops = 0;
+      var byHint = null, bySize = null, bySizeArea = Infinity;
+      var vw = window.innerWidth || 1920, vh = window.innerHeight || 1080, pageArea = vw * vh;
+      while (node && node !== document.body && node !== document.documentElement && hops < 8) {
+        var r = node.getBoundingClientRect();
+        var a = (r.width || 0) * (r.height || 0);
+        var wrapsVideo = a >= vArea * 0.85 && a <= pageArea * 1.05;
+        // 1) player-like identity?
+        if (!byHint && wrapsVideo) {
+          var idc = ((node.className && typeof node.className === 'string' ? node.className : '') + ' ' +
+                     (node.id || '') + ' ' + (node.getAttribute && (node.getAttribute('data-testid') || '') || ''));
+          if (PLAYER_RE.test(idc)) byHint = node;
+        }
+        // 2) smallest ancestor that closely matches the video's box.
+        if (wrapsVideo && a <= vArea * 2.2 && a < bySizeArea) { bySize = node; bySizeArea = a; }
+        node = node.parentElement; hops++;
+      }
+      return byHint || bySize || null;
+    } catch (e) { return null; }
+  }
+
   /* ═══════════════════════════════════════════════════════════════
    *  ATTACH PLAYER — Core function, called once per video element
    * ═══════════════════════════════════════════════════════════════ */
@@ -1482,6 +1788,7 @@
     // threw a swallowed ReferenceError and the float-sync loop never ran (the
     // "button never appears" bug on mobile YT/Twitch).
     let isDestroyed = false;
+    let _selfRepairTimer = null;   // self-repair health-check interval
     // Guards
     if (processedVideos.has(video)) return;
     if (dismissedVideos.has(video)) return;   // user pressed ✕ — stay gone
@@ -1544,6 +1851,20 @@
     /* ─── Find the best container element ─── */
     let container = video.parentElement;
 
+    // FAST PATH: if we've successfully handled this exact site before, reuse the
+    // learned container selector immediately (instant, no re-discovery). Verified
+    // to still wrap the current video; falls through to detection if the site
+    // changed (self-healing).
+    var _profileContainer = null;
+    try {
+      if (SiteProfiles.isTrusted()) {
+        var pc = SiteProfiles.cachedContainer();
+        if (pc && pc.contains && pc.contains(video) && pc !== document.body) {
+          _profileContainer = pc;
+        }
+      }
+    } catch (e) {}
+
     if (IS_YOUTUBE) {
       if (IS_MOBILE) {
         // MOBILE (m.youtube): attach to .html5-video-container (data-layer=0,
@@ -1571,7 +1892,18 @@
       // (overflow is managed by applyAspectRatio: visible in default mode,
       //  hidden for AR modes so zoom/fill don't spill across the page)
     } else if (IS_NETFLIX) {
-      container = video.closest('.VideoContainer, .nfp-container') || container;
+      container = video.closest('.VideoContainer, .nfp-container, .watch-video, .watch-video--player-view') || container;
+    } else if (IS_DRM_SITE) {
+      // Disney+/Prime/Max/Hulu/Apple TV+/Crunchyroll/Shahid/OSN+… — enhancement
+      // (aspect/zoom/speed/filters) still works on the EME <video>; only download
+      // is blocked. Find the player box for correct button placement, else fall
+      // back to the nearest positioned ancestor.
+      container = video.closest(
+        '[class*="player" i], [class*="Player" i], [id*="player" i], ' +
+        '[data-testid*="player" i], [class*="video" i], [class*="Video" i], ' +
+        '.btm-media-client-element, .dv-player-fullscreen, .webPlayerContainer, ' +
+        '.atvwebplayersdk-overlays-container, #shahid-player, .video-js'
+      ) || video.parentElement || container;
     } else if (IS_TWITCH) {
       // Desktop selectors + mobile (m.twitch.tv) wrappers. Mobile Twitch has NO
       // .video-player__container — the video sits in .video-ref--* inside
@@ -1594,12 +1926,81 @@
     } else if (IS_TWITTER) {
       container = video.closest('[data-testid="videoComponent"], [data-testid="videoPlayer"]') || container;
     } else if (IS_REDDIT) {
-      container = video.closest('shreddit-player, shreddit-player-2, [data-testid="shreddit-player"], .reddit-video-player-root') || container;
+      // Reddit's <shreddit-player> puts the <video> inside a SHADOW ROOT.
+      // closest() can't escape the shadow boundary, so first try the shadow
+      // HOST (light-DOM element) and use a floating overlay over it; only then
+      // fall back to in-shadow ancestors.
+      var _rh = shadowHostOf(video);
+      container = (_rh && _rh.closest && (_rh.closest('shreddit-player, [slot="post-media-container"], [data-testid="post-container"]') || _rh))
+        || video.closest('shreddit-player, shreddit-player-2, [data-testid="shreddit-player"], .reddit-video-player-root, [class*="media"]')
+        || (_rh || video.parentElement)
+        || container;
+    } else if (IS_TIKTOK) {
+      container = video.closest('[class*="DivVideoWrapper"], [class*="DivContainer"], [class*="video-card"], [data-e2e="video-player"], [class*="xgplayer"]')
+        || video.parentElement || container;
+    } else if (IS_INSTAGRAM) {
+      container = video.closest('article, [role="presentation"], [class*="x5yr21d"]') || video.parentElement || container;
+    } else if (IS_DAILYMOTION) {
+      container = video.closest('[class*="player"], .dmp_Player, #player, [data-testid="player"]') || video.parentElement || container;
+    } else if (IS_OKRU) {
+      container = video.closest('[class*="vid-card_cnt"], [class*="video-card"], [data-module*="Video"], .vp_video_wrapper, #movie_box, [class*="player"]')
+        || video.parentElement || container;
+    } else if (IS_BILIBILI) {
+      container = video.closest('#bilibili-player, .bpx-player-container, [class*="player-container"], .player-wrap')
+        || video.parentElement || container;
+    } else if (IS_RUMBLE) {
+      container = video.closest('.rumbles-vplayer, [class*="videoPlayer"], .media-container, rumble-player')
+        || video.parentElement || container;
+    } else if (IS_ODYSEE) {
+      container = video.closest('.vjs-tech, .video-js, [class*="fileRenderVideo"], .content__viewer')
+        || video.parentElement || container;
+    } else {
+      // ─── UNIVERSAL SMART CONTAINER DETECTOR (works on ANY site) ───
+      // No site-specific rule matched → intelligently find the real player box.
+      // 1) Try common player-wrapper hints by class/id/attribute.
+      // 2) Otherwise score ancestors and pick the smallest one that fully wraps
+      //    the video AND looks like a player (its box ≈ video's box).
+      var _smart = smartFindContainer(video);
+      if (_smart) container = _smart;
     }
+
+    // Prefer the learned container from a trusted site profile (instant path).
+    if (_profileContainer) container = _profileContainer;
 
     // Fallback — never use document.body as container
     if (!container || container === document.body || container === document.documentElement) {
       container = video.parentElement;
+    }
+
+    // SMART CONTAINER SIZING (generic/embed players e.g. animeav1 Mega/MP4Upload):
+    // If the chosen container is much smaller than the video's own box (common
+    // before playback starts, or when the parent is a zero-size wrapper), walk up
+    // to the nearest ancestor that actually matches the video's rendered size, so
+    // our overlay/controls cover the whole player instead of a tiny corner.
+    // NOTE: compute the managed-layout flag INLINE here — the `USES_MANAGED_LAYOUT`
+    // const is declared later in this function, so referencing it now would throw
+    // a Temporal-Dead-Zone ReferenceError and kill attachPlayer on every site.
+    var _isManaged = IS_YOUTUBE || IS_NETFLIX || IS_TWITCH || IS_FACEBOOK || IS_VIMEO ||
+                     IS_TWITTER || IS_REDDIT || IS_TIKTOK || IS_INSTAGRAM || IS_DAILYMOTION || IS_DRM_SITE;
+    if (!_isManaged) {
+      try {
+        var vr0 = video.getBoundingClientRect();
+        var cr0 = container.getBoundingClientRect ? container.getBoundingClientRect() : { width: 0, height: 0 };
+        var vArea = (vr0.width || 0) * (vr0.height || 0);
+        var cArea = (cr0.width || 0) * (cr0.height || 0);
+        // Container is missing/■tiny relative to the video → climb to a better box.
+        if (vArea > 0 && (cArea < vArea * 0.6)) {
+          var node = video.parentElement, best = container, bestArea = cArea, hops = 0;
+          while (node && node !== document.body && hops < 6) {
+            var r = node.getBoundingClientRect();
+            var a = (r.width || 0) * (r.height || 0);
+            // Prefer the smallest ancestor that comfortably contains the video.
+            if (a >= vArea * 0.9 && (bestArea < vArea * 0.9 || a < bestArea)) { best = node; bestArea = a; }
+            node = node.parentElement; hops++;
+          }
+          container = best || container;
+        }
+      } catch (e) {}
     }
 
     // Ensure container has positioning context.
@@ -1612,7 +2013,9 @@
     // Will this instance use the top-level FLOATING host? (mobile YT/Twitch/FB)
     // If so, our overlay is position:fixed on <html> and does NOT live inside
     // the player, so we must NOT touch the container's position at all.
-    const _willFloat = IS_MOBILE && (IS_YOUTUBE || IS_TWITCH || IS_FACEBOOK);
+    var _wfShadow = false;
+    try { _wfShadow = !!(video.getRootNode && video.getRootNode() instanceof ShadowRoot); } catch (e) {}
+    const _willFloat = (IS_MOBILE && (IS_YOUTUBE || IS_TWITCH || IS_FACEBOOK)) || _wfShadow;
     const containerStyle = getComputedStyle(container);
     if (containerStyle.position === 'static') {
       if (IS_YOUTUBE || _willFloat) {
@@ -1638,7 +2041,13 @@
     // and being the last child of <html> at max z-index makes the button always
     // land taps. Desktop (which already works in-container) is left unchanged.
     const IS_MOBILE_YT = IS_YOUTUBE && IS_MOBILE;
-    const useFloatingHost = IS_MOBILE && (IS_YOUTUBE || IS_TWITCH || IS_FACEBOOK);
+    // A <video> inside a SHADOW ROOT (e.g. Reddit's <shreddit-player>) can't be
+    // overlaid reliably in-container (our host would land inside the shadow tree
+    // or misalign). The floating host (position:fixed on <html>, synced to the
+    // video's viewport rect) works across shadow boundaries — so use it there.
+    var _videoInShadow = false;
+    try { _videoInShadow = !!(video.getRootNode && video.getRootNode() instanceof ShadowRoot); } catch (e) {}
+    const useFloatingHost = (IS_MOBILE && (IS_YOUTUBE || IS_TWITCH || IS_FACEBOOK)) || _videoInShadow;
     let floatSyncRAF = null;
     let floatSyncActive = false;
     let lastFloatRect = null;
@@ -1654,6 +2063,12 @@
     var _syncTick = 0;
     function syncFloatingHost() {
       if (isDestroyed) { floatSyncActive = false; vmxDebug('sync', 'STOPPED (destroyed)'); return; }
+      // PERF: when the tab is hidden, stop the per-frame work but keep the loop
+      // alive at a slow tick so we resume instantly when the tab is shown again.
+      if (document.hidden) {
+        if (floatSyncActive) floatSyncRAF = setTimeout(syncFloatingHost, 500);
+        return;
+      }
       try {
         if ((++_syncTick % 30) === 1) vmxDebug('beat', 'sync running t=' + _syncTick);
         // Anchor to the ACTUAL <video> rect whenever it is on-screen and sanely
@@ -1711,7 +2126,8 @@
 
     function stopFloatSync() {
       floatSyncActive = false;
-      if (floatSyncRAF) { cancelAnimationFrame(floatSyncRAF); floatSyncRAF = null; }
+      // floatSyncRAF can be a RAF id OR a setTimeout id (hidden-tab path) — clear both.
+      if (floatSyncRAF) { try { cancelAnimationFrame(floatSyncRAF); } catch (e) {} try { clearTimeout(floatSyncRAF); } catch (e) {} floatSyncRAF = null; }
     }
 
     vmxDebug('host', useFloatingHost ? ('FLOATING container=' + (container && container.className || container && container.id || container && container.tagName)) : ('in-container ' + (container && (container.className || container.id || container.tagName)) + ' pos=' + getComputedStyle(container).position));
@@ -1741,7 +2157,7 @@
     // Subtitle file input (hidden, lives in main DOM)
     const subtitleFileInput = document.createElement('input');
     subtitleFileInput.type = 'file';
-    subtitleFileInput.accept = '.srt,.vtt';
+    subtitleFileInput.accept = '.srt,.vtt,.ass,.ssa,.vtt.txt';
     subtitleFileInput.style.cssText = 'position:absolute;left:-9999px;opacity:0;pointer-events:none';
     document.body.appendChild(subtitleFileInput);
 
@@ -1941,14 +2357,15 @@
     addMenuSeparator();
     addMenuLabel('Video');
     const menuPiP = createPanelItem('pip', 'Picture-in-Picture');
-    const menuDownload = createPanelItem('download', 'Download');
+    const menuDownload = createPanelItem('download', 'Download / Play external');
     const menuInfo = createPanelItem('info', 'Video Info');
     const menuReset = createPanelItem('reset', 'Reset All');
     var menuCinema = createPanelItem('cinema', 'Cinema Mode');
     var menuFullscreen = createPanelItem('fsE', 'Fullscreen');
     var menuRotateMenu = createPanelItem('rot', 'Rotate');
     var menuMirrorMenu = createPanelItem('mirror', 'Mirror');
-    [menuFullscreen, menuRotateMenu, menuMirrorMenu, menuCinema, menuPiP, menuDownload, menuInfo, menuReset].forEach(item => contextMenu.appendChild(item));
+    var menuDiag = createPanelItem('info', 'Export diagnostics (.txt)');
+    [menuFullscreen, menuRotateMenu, menuMirrorMenu, menuCinema, menuPiP, menuDownload, menuInfo, menuReset, menuDiag].forEach(item => contextMenu.appendChild(item));
     hud.appendChild(contextMenu);
 
     /* Quality panel */
@@ -1967,7 +2384,7 @@
     subtitlePanel.appendChild(subtitleList);
     const subtitleUploadBtn = createElement('div', 'vm-subtitle-upload');
     subtitleUploadBtn.appendChild(getIcon('upload'));
-    subtitleUploadBtn.appendChild(document.createTextNode(' Load .srt / .vtt'));
+    subtitleUploadBtn.appendChild(document.createTextNode(' Load .srt / .vtt / .ass'));
     subtitlePanel.appendChild(subtitleUploadBtn);
     hud.appendChild(subtitlePanel);
 
@@ -2344,7 +2761,7 @@
     // styles. Repositioning them absolutely fights that logic and causes black
     // screens. For these we use a NON-INTRUSIVE engine: object-fit + transform
     // only — never touching position/width/height/top/left.
-    const USES_MANAGED_LAYOUT = IS_YOUTUBE || IS_NETFLIX || IS_TWITCH || IS_FACEBOOK || IS_VIMEO || IS_TWITTER || IS_REDDIT;
+    const USES_MANAGED_LAYOUT = IS_YOUTUBE || IS_NETFLIX || IS_TWITCH || IS_FACEBOOK || IS_VIMEO || IS_TWITTER || IS_REDDIT || IS_TIKTOK || IS_INSTAGRAM || IS_DAILYMOTION || IS_DRM_SITE;
 
     const AR_ALL_PROPS = ['width','height','top','left','right','bottom',
       'object-fit','object-position','max-width','max-height','min-width','min-height',
@@ -2596,57 +3013,42 @@
     function enterFullscreen() {
       if (isFullscreen) return;
 
-      // On managed players (YouTube/Netflix/…) NEVER move the <video> into a
-      // custom element — that detaches it from the site's player and causes a
-      // black screen. Use NATIVE fullscreen on the site's own container instead.
-      if (USES_MANAGED_LAYOUT) {
-        var target = container || video;
-        var reqFS = target.requestFullscreen || target.webkitRequestFullscreen || video.requestFullscreen || video.webkitRequestFullscreen;
-        try { (reqFS.call ? reqFS.call(target) : reqFS.call(video)).catch(function(){}); } catch (e) {
-          try { (video.requestFullscreen || video.webkitRequestFullscreen).call(video); } catch (e2) {}
+      // ─── UNIVERSAL NATIVE FULLSCREEN (works on EVERY site) ───
+      // We NEVER move the <video> into a custom element — detaching it from the
+      // site's player breaks playback and, in default mode, left the video its
+      // small natural size in a corner with black around it (the exact bug a
+      // user reported: "lleva el video a una esquina, el resto queda en negro").
+      // Instead we request native fullscreen on the element that ALREADY
+      // contains BOTH the video and our overlay host, then inject CSS that forces
+      // the video to fill the fullscreen box. onFullscreenChange handles the
+      // fill + floating-host relocation for us.
+      //
+      // Pick the smallest ancestor that contains BOTH the video and the host, so
+      // our controls are visible in fullscreen. Fall back sensibly.
+      var fsTarget = null;
+      try {
+        if (!useFloatingHost && hostElement && hostElement.parentNode &&
+            hostElement.parentNode.contains && hostElement.parentNode.contains(video)) {
+          fsTarget = hostElement.parentNode;         // host is a sibling of video
         }
-        isFullscreen = true;
-        setButtonIcon(fullscreenButton, 'fullscreenExit');
-        setTimeout(function () { if (!isDestroyed) applyAspectRatio(); }, 120);
-        showToast('⛶ Fullscreen');
-        return;
+      } catch (e) {}
+      fsTarget = fsTarget || container || (video.parentElement) || video;
+
+      var reqFS = fsTarget.requestFullscreen || fsTarget.webkitRequestFullscreen ||
+                  fsTarget.webkitRequestFullScreen || fsTarget.mozRequestFullScreen ||
+                  fsTarget.msRequestFullscreen;
+      try {
+        var p = reqFS ? reqFS.call(fsTarget) : null;
+        if (p && p.catch) p.catch(function () {
+          // Some sites reject FS on a div — fall back to the <video> itself.
+          try { (video.requestFullscreen || video.webkitRequestFullscreen || video.webkitEnterFullscreen).call(video); } catch (e2) {}
+        });
+      } catch (e) {
+        try { (video.requestFullscreen || video.webkitRequestFullscreen || video.webkitEnterFullscreen).call(video); } catch (e2) {}
       }
-
-      savedVideoSibling = video.nextSibling;
-
-      // Floating-host players (mobile YT/Twitch/FB) use native fullscreen too —
-      // never move the <video> into a custom element (that black-screens them).
-      if (useFloatingHost) {
-        var fsTarget = container || video;
-        var reqF = fsTarget.requestFullscreen || fsTarget.webkitRequestFullscreen || video.requestFullscreen || video.webkitRequestFullscreen;
-        try { (reqF.call ? reqF.call(fsTarget) : reqF.call(video)); } catch (e) {
-          try { (video.requestFullscreen || video.webkitRequestFullscreen).call(video); } catch (e2) {}
-        }
-        isFullscreen = true;
-        setButtonIcon(fullscreenButton, 'fullscreenExit');
-        setTimeout(function () { if (!isDestroyed) applyAspectRatio(); }, 120);
-        showToast('⛶ Fullscreen');
-        return;
-      }
-
-      fullscreenElement = document.createElement('div');
-      fullscreenElement.style.cssText = 'position:fixed;inset:0;background:#000;z-index:2147483640;overflow:hidden';
-
-      const inner = document.createElement('div');
-      inner.style.cssText = 'position:absolute;inset:0;overflow:hidden';
-
-      document.body.appendChild(fullscreenElement);
-      fullscreenElement.appendChild(inner);
-      inner.appendChild(video);
-      fullscreenElement.appendChild(hostElement);
-      hostElement.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:10';
-
-      const requestFS = fullscreenElement.requestFullscreen || fullscreenElement.webkitRequestFullscreen;
-      if (requestFS) requestFS.call(fullscreenElement).catch(() => {});
-
+      _fsTarget = fsTarget;
       isFullscreen = true;
       setButtonIcon(fullscreenButton, 'fullscreenExit');
-      applyAspectRatio();
       showToast('⛶ Fullscreen');
 
       if (IS_MOBILE && screen.orientation && screen.orientation.lock) {
@@ -2656,36 +3058,63 @@
           screen.orientation.lock(vh2 > vw2 ? 'portrait' : 'landscape').catch(() => {});
         }
       }
+      // Apply the fill CSS + AR after the browser lays out fullscreen.
+      [30, 120, 300].forEach(function (d) { setTimeout(function () { if (!isDestroyed) { applyFullscreenFill(); applyAspectRatio(); } }, d); });
+    }
+
+    // Force the <video> to fill the native fullscreen element (default mode) —
+    // this is what stops "video in a corner, rest black" on generic sites. Uses
+    // a scoped stylesheet keyed to :fullscreen so it only applies while in FS and
+    // never permanently touches the site's layout.
+    var _fsStyleEl = null, _fsTarget = null;
+    function applyFullscreenFill() {
+      try {
+        var activeFS = document.fullscreenElement || document.webkitFullscreenElement;
+        if (!activeFS) return;
+        // CRITICAL: NEVER force-position the <video> on managed players
+        // (YouTube/Netflix/Twitch/…). They size & position their own fullscreen
+        // video (YouTube uses inline negative-top); forcing position:absolute/
+        // inset:0 on it collapses/offsets the frame → BLACK SCREEN. Those sites
+        // fill the screen correctly on their own, so we apply NO fill CSS there.
+        if (USES_MANAGED_LAYOUT) { clearFullscreenFill(); return; }
+        if (!_fsStyleEl) {
+          _fsStyleEl = document.createElement('style');
+          _fsStyleEl.id = 'vm-fs-fill';
+          (document.head || document.documentElement).appendChild(_fsStyleEl);
+        }
+        // Only fill in DEFAULT aspect mode; AR/zoom modes manage the video via
+        // transforms in applyAspectRatio (we must not fight them here).
+        var fillObjectFit = (aspectRatioIndex === 0) ? 'contain' : '';
+        // Scope tightly: only a <video> that is a DIRECT child of the fullscreen
+        // element (the generic "raw video/wrapper went fullscreen" case). This
+        // avoids touching complex site players that nest/position their video.
+        _fsStyleEl.textContent =
+          ':fullscreen > video, :-webkit-full-screen > video {' +
+            'position:absolute !important; inset:0 !important;' +
+            'width:100% !important; height:100% !important;' +
+            'max-width:100% !important; max-height:100% !important;' +
+            'margin:auto !important;' + (fillObjectFit ? ('object-fit:' + fillObjectFit + ' !important;') : '') +
+          '}' +
+          ':fullscreen, :-webkit-full-screen { background:#000 !important; }';
+      } catch (e) {}
+    }
+    function clearFullscreenFill() {
+      try { if (_fsStyleEl) { _fsStyleEl.remove(); _fsStyleEl = null; } } catch (e) {}
     }
 
     function exitFullscreen() {
       if (!isFullscreen) return;
       isFullscreen = false;
 
-      const exitFn = document.exitFullscreen || document.webkitExitFullscreen;
-      if (exitFn) exitFn.call(document).catch(() => {});
+      const exitFn = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+      try { if (exitFn) { var pr = exitFn.call(document); if (pr && pr.catch) pr.catch(function(){}); } } catch (e) {}
 
       if (IS_MOBILE && screen.orientation && screen.orientation.unlock) {
-        screen.orientation.unlock();
+        try { screen.orientation.unlock(); } catch (e) {}
       }
 
-      if (fullscreenElement) {
-        try {
-          if (savedVideoSibling && savedVideoSibling.parentNode === container) {
-            container.insertBefore(video, savedVideoSibling);
-          } else {
-            container.appendChild(video);
-          }
-        } catch (e) {
-          container.appendChild(video);
-        }
-
-        container.appendChild(hostElement);
-        hostElement.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2147483647;';
-        fullscreenElement.remove();
-        fullscreenElement = null;
-        savedVideoSibling = null;
-      }
+      clearFullscreenFill();
+      _fsTarget = null;
 
       setButtonIcon(fullscreenButton, 'fullscreenEnter');
       applyAspectRatio();
@@ -2694,6 +3123,8 @@
 
     function onFullscreenChange() {
       const activeFS = document.fullscreenElement || document.webkitFullscreenElement;
+      vmxDebug('fs', 'change activeFS=' + (activeFS ? (activeFS.tagName + '.' + String(activeFS.className||'').slice(0,24)) : 'none') +
+               ' floating=' + useFloatingHost + ' hostConnected=' + hostElement.isConnected);
 
       // FLOATING-HOST fullscreen fix (mobile YouTube/Twitch/Facebook):
       // In native fullscreen the browser paints ONLY the fullscreen element and
@@ -2703,7 +3134,22 @@
       if (useFloatingHost) {
         try {
           if (activeFS) {
-            if (hostElement.parentNode !== activeFS) activeFS.appendChild(hostElement);
+            // Where to place our overlay so it RENDERS inside the FS element:
+            //  • If the FS element is a custom element with a shadow root, a plain
+            //    light-DOM child won't render (no <slot>), so inject into its
+            //    OPEN shadowRoot. If the shadow root is closed, fall back to the
+            //    deepest open shadow root on the path, else the element itself.
+            var target = activeFS;
+            try {
+              if (activeFS.shadowRoot) target = activeFS.shadowRoot;           // open shadow → render here
+              else {
+                // Try the video's own root (works when video shares FS element's tree).
+                var vroot = video.getRootNode && video.getRootNode();
+                if (vroot && vroot.nodeType === 11 && vroot.host && activeFS.contains(vroot.host)) target = vroot;
+              }
+            } catch (e) {}
+            if (hostElement.parentNode !== target) { try { target.appendChild(hostElement); } catch (e) { try { activeFS.appendChild(hostElement); } catch (e2) {} } }
+            vmxDebug('fs', 'host moved into FS target=' + (target.host ? '#shadow' : (target.tagName || target.nodeName)));
             // Inside the FS element, fill it directly (no getBoundingClientRect sync).
             stopFloatSync();
             hostElement.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2147483647;display:block;';
@@ -2720,12 +3166,21 @@
         } catch (e) {}
       }
 
+      // UNIVERSAL fill: whenever we're in native fullscreen, force the video to
+      // fill the FS box (fixes "video in a corner, rest black" on generic sites);
+      // remove the fill CSS when leaving fullscreen.
+      if (activeFS) applyFullscreenFill(); else clearFullscreenFill();
+
+      // If fullscreen ended by the user (Esc / system back), sync our state.
       if (!activeFS && isFullscreen) exitFullscreen();
-      // Player box size changes drastically on FS toggle — recompute AR a few times
-      // (the browser/site lays out the video asynchronously after the event).
-      if (aspectRatioIndex !== 0) {
-        [60, 200, 500].forEach(function (d) { setTimeout(function () { if (!isDestroyed) applyAspectRatio(); }, d); });
-      }
+
+      // Player box size changes drastically on FS toggle — recompute fill + AR a
+      // few times (the browser/site lays out the video asynchronously).
+      [60, 200, 500].forEach(function (d) { setTimeout(function () {
+        if (isDestroyed) return;
+        if (document.fullscreenElement || document.webkitFullscreenElement) applyFullscreenFill();
+        applyAspectRatio();
+      }, d); });
     }
     ['fullscreenchange', 'webkitfullscreenchange'].forEach(evt => {
       document.addEventListener(evt, onFullscreenChange);
@@ -2785,6 +3240,7 @@
      *          | '720' | '480' | '360' | '240' | '144'
      * ═══════════════════════════════════════════════════ */
     var _lastQualityTarget = null;
+    var _lastDetectedQualities = [];   // filled by buildQualityOptions (for downloads)
     var _ytQualityCache = null;       // {cur, levels:[{id,height}]} from bridge
     var _ytQualityFetching = false;
     var _ytQualityRetries = 0;
@@ -3066,14 +3522,22 @@
             if (!label || !base) continue;
             fbQ.push({ label: label, height: h || parseInt(label, 10) || 0, url: base });
           }
-          // Fallback: progressive playable_url / playable_url_quality_hd
+          // Fallback: progressive URLs FB embeds under several key names across
+          // its web + mobile + GraphQL responses. Try them all (HD then SD).
+          function deesc(u){ return u.replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/\\u0025/gi,'%').replace(/\\u003D/gi,'=').replace(/\\/g,''); }
           if (fbQ.length < 2) {
-            var reHd = /"playable_url_quality_hd"\s*:\s*"([^"]+)"/i;
-            var reSd = /"playable_url"\s*:\s*"([^"]+)"/i;
-            var hd = raw.match(reHd), sd = raw.match(reSd);
-            function deesc(u){ return u.replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/\\u0025/gi,'%').replace(/\\/g,''); }
-            if (hd) fbQ.push({ label: 'HD', height: 720, url: deesc(hd[1]) });
-            if (sd) fbQ.push({ label: 'SD', height: 360, url: deesc(sd[1]) });
+            var hdKeys = ['playable_url_quality_hd','browser_native_hd_url','hd_src_no_ratelimit','hd_src','progressive_url'];
+            var sdKeys = ['playable_url','browser_native_sd_url','sd_src_no_ratelimit','sd_src'];
+            hdKeys.forEach(function (k) {
+              if (fbQ.some(function(q){return q.label==='HD';})) return;
+              var m = raw.match(new RegExp('"' + k + '"\\s*:\\s*"([^"]+\\.mp4[^"]*)"', 'i'));
+              if (m) fbQ.push({ label: 'HD', height: 720, url: deesc(m[1]) });
+            });
+            sdKeys.forEach(function (k) {
+              if (fbQ.some(function(q){return q.label==='SD';})) return;
+              var m = raw.match(new RegExp('"' + k + '"\\s*:\\s*"([^"]+\\.mp4[^"]*)"', 'i'));
+              if (m) fbQ.push({ label: 'SD', height: 360, url: deesc(m[1]) });
+            });
           }
           // MOBILE FALLBACK (m.facebook.com): the page does NOT embed the DASH
           // manifest in HTML. Instead every progressive .mp4 we sniff carries an
@@ -3392,72 +3856,103 @@
           var ql = mx >= 2160 ? '4K' : mx >= 1440 ? '1440p' : mx >= 1080 ? '1080p' : mx >= 720 ? '720p' : mx >= 480 ? '480p' : 'SD';
           infoEl.textContent = ql + ' · ' + vw + '×' + vh;
           if (IS_YOUTUBE) infoEl.textContent += ' (use YT ⚙ for quality)';
+          else if (IS_DRM_SITE) infoEl.textContent += ' — set quality in the site player (DRM stream)';
+        } else if (IS_DRM_SITE) {
+          infoEl.textContent = 'DRM stream — change quality in the site\'s own player settings';
         } else {
           infoEl.textContent = 'Quality managed by site';
-        // Add yt-dlp hint
-        var ytdlpHint = createElement('div', 'vm-quality-item');
-        ytdlpHint.style.cssText = 'font-size:11px;color:var(--vm-red);cursor:pointer';
-        ytdlpHint.textContent = '💡 Use yt-dlp for all qualities';
-        ytdlpHint.addEventListener('click', function () {
-          var cmd = 'yt-dlp -F "' + location.href + '"';
-          navigator.clipboard.writeText(cmd).then(function () {
-            showToast('📋 yt-dlp command copied! Run in terminal');
-          }).catch(function () { prompt('Copy:', cmd); });
-          qualityPanel.classList.remove('vm-visible');
-        });
-        qualityList.appendChild(ytdlpHint);
+        // Add yt-dlp hint (skip on DRM sites — it can't fetch DRM streams either)
+        if (!IS_DRM_SITE) {
+          var ytdlpHint = createElement('div', 'vm-quality-item');
+          ytdlpHint.style.cssText = 'font-size:11px;color:var(--vm-red);cursor:pointer';
+          ytdlpHint.textContent = '💡 Use yt-dlp for all qualities';
+          ytdlpHint.addEventListener('click', function () {
+            var cmd = 'yt-dlp -F "' + location.href + '"';
+            navigator.clipboard.writeText(cmd).then(function () {
+              showToast('📋 yt-dlp command copied! Run in terminal');
+            }).catch(function () { prompt('Copy:', cmd); });
+            qualityPanel.classList.remove('vm-visible');
+          });
+          qualityList.appendChild(ytdlpHint);
+        }
         }
         qualityList.appendChild(infoEl);
         return;
       }
 
+      // Expose detected levels (with any direct srcUrls) to the download panel.
+      try { _lastDetectedQualities = qualityLevels.slice(); } catch (e) {}
+
+      // Apply a detected quality level (shared by clicks + the MAX button).
+      function applyQualityLevel(lv) {
+        if (lv.type === 'hls' && hlsInstance) {
+          hlsInstance.currentLevel = lv.id;
+        } else if (lv.type === 'youtube') {
+          VMXBridge.call('yt-set-quality', lv.id, function(){});
+          _ytQualityCache = null; // force refresh
+        } else if (lv.type === 'source' || lv.type === 'manifest-hls') {
+          if (lv.srcUrl) {
+            var t = video.currentTime;
+            if (/\.m3u8(\?|#|$)/i.test(lv.srcUrl) || lv.type === 'manifest-hls') {
+              tryAttachHls(lv.srcUrl);
+              video.addEventListener('loadedmetadata', function () {
+                try { video.currentTime = t; } catch (e) {} video.play().catch(function(){});
+              }, { once: true });
+            } else {
+              video.src = lv.srcUrl; video.load();
+              video.addEventListener('loadedmetadata', function () {
+                video.currentTime = t; video.play().catch(function(){});
+              }, { once: true });
+            }
+          }
+        } else if (lv.type === 'bridge-generic') {
+          VMXBridge.call('generic-set-quality', lv.height, function(){});
+          _genericQualityCache = null;
+        } else if (lv.type === 'plyr') {
+          try { var p = video.closest('.plyr'); var pi = p ? (p.__plyr || window.player) : null; if (pi) pi.quality = lv.id; } catch (e) {}
+        } else if (lv.type === 'videojs') {
+          try { var vl = video.player.qualityLevels(); for (var i = 0; i < vl.length; i++) vl[i].enabled = (i === lv.id); } catch (e) {}
+        } else if (lv.type === 'jwplayer') {
+          try { window.jwplayer().setCurrentQuality(lv.id); } catch (e) {}
+        } else if (lv.type === 'open-url') {
+          try { window.open(lv.srcUrl, '_blank', 'noopener'); } catch (e) {}
+        } else if (lv.type === 'dom-quality' && lv.element) {
+          try { lv.element.click(); } catch (e) {}
+        } else if (lv.type === 'videotrack') {
+          Array.from(video.videoTracks).forEach(function (t, i) { t.selected = (i === lv.id); });
+        }
+        showToast('🎬 ' + lv.label);
+        qualityPanel.classList.remove('vm-visible');
+        setTimeout(buildQualityOptions, 600);
+      }
+
+      // ─── SMART "⚡ MAX" — one-tap highest quality ───
+      // Picks the level with the greatest resolution/height (ignoring "Auto").
+      // Works across every detection type, so it's a universal "give me the best".
+      (function addMaxButton() {
+        var real = qualityLevels.filter(function (l) {
+          return l && String(l.label).toLowerCase().indexOf('auto') === -1;
+        });
+        if (real.length < 2) return;
+        function heightOf(l) {
+          if (typeof l.height === 'number' && l.height) return l.height;
+          var m = String(l.label || '').match(/(\d{3,4})/);
+          return m ? parseInt(m[1], 10) : 0;
+        }
+        var best = real.slice().sort(function (a, b) { return heightOf(b) - heightOf(a); })[0];
+        if (!best) return;
+        var maxItem = createElement('div', 'vm-quality-item vm-quality-max');
+        maxItem.textContent = '⚡ MAX — ' + (best.label || 'Best');
+        maxItem.style.cssText = 'font-weight:800;color:#22c55e';
+        maxItem.addEventListener('click', function () { applyQualityLevel(best); });
+        qualityList.appendChild(maxItem);
+      })();
+
       // ─── RENDER QUALITY OPTIONS ───
       qualityLevels.forEach(function (lv) {
         var item = createElement('div', 'vm-quality-item' + (lv.isActive ? ' vm-selected' : ''));
         item.textContent = (lv.isActive ? '✓ ' : '') + lv.label;
-        item.addEventListener('click', function () {
-          if (lv.type === 'hls' && hlsInstance) {
-            hlsInstance.currentLevel = lv.id;
-          } else if (lv.type === 'youtube') {
-            VMXBridge.call('yt-set-quality', lv.id, function(){});
-            _ytQualityCache = null; // force refresh
-          } else if (lv.type === 'source' || lv.type === 'manifest-hls') {
-            if (lv.srcUrl) {
-              var t = video.currentTime;
-              // HLS variant playlists need hls.js in Chrome (no native HLS).
-              if (/\.m3u8(\?|#|$)/i.test(lv.srcUrl) || lv.type === 'manifest-hls') {
-                tryAttachHls(lv.srcUrl);
-                video.addEventListener('loadedmetadata', function () {
-                  try { video.currentTime = t; } catch (e) {} video.play().catch(function(){});
-                }, { once: true });
-              } else {
-                video.src = lv.srcUrl; video.load();
-                video.addEventListener('loadedmetadata', function () {
-                  video.currentTime = t; video.play().catch(function(){});
-                }, { once: true });
-              }
-            }
-          } else if (lv.type === 'bridge-generic') {
-            VMXBridge.call('generic-set-quality', lv.height, function(){});
-            _genericQualityCache = null;
-          } else if (lv.type === 'plyr') {
-            try { var p = video.closest('.plyr'); var pi = p ? (p.__plyr || window.player) : null; if (pi) pi.quality = lv.id; } catch (e) {}
-          } else if (lv.type === 'videojs') {
-            try { var vl = video.player.qualityLevels(); for (var i = 0; i < vl.length; i++) vl[i].enabled = (i === lv.id); } catch (e) {}
-          } else if (lv.type === 'jwplayer') {
-            try { window.jwplayer().setCurrentQuality(lv.id); } catch (e) {}
-          } else if (lv.type === 'open-url') {
-            // Quality is a separate download/page URL (e.g. anime3rb) — open it.
-            try { window.open(lv.srcUrl, '_blank', 'noopener'); } catch (e) {}
-          } else if (lv.type === 'dom-quality' && lv.element) {
-            try { lv.element.click(); } catch (e) {}
-          } else if (lv.type === 'videotrack') {
-            Array.from(video.videoTracks).forEach(function (t, i) { t.selected = (i === lv.id); });
-          }
-          showToast('🎬 ' + lv.label);
-          qualityPanel.classList.remove('vm-visible');
-          setTimeout(buildQualityOptions, 600);
-        });
+        item.addEventListener('click', function () { applyQualityLevel(lv); });
         qualityList.appendChild(item);
       });
     }
@@ -3638,7 +4133,9 @@
       try {
         fetch(url, { credentials: 'include' }).then(function (r) { return r.text(); }).then(function (text) {
           var cues = [];
-          if (/^\s*</.test(text) && /<(text|p|tt)\b/i.test(text)) {
+          if (/\[Script Info\]|\[V4\+? Styles\]|^Dialogue:/im.test(text)) {
+            cues = parseAssText(text);                 // ASS/SSA (anime subs)
+          } else if (/^\s*</.test(text) && /<(text|p|tt)\b/i.test(text)) {
             cues = parseTimedTextXml(text);           // YouTube timedtext / TTML
           } else if (/-->/.test(text) && /WEBVTT/i.test(text)) {
             cues = parseVttText(text);
@@ -3651,6 +4148,50 @@
           else cb && cb(false);
         }).catch(function () { cb && cb(false); });
       } catch (e) { cb && cb(false); }
+    }
+
+    // Parse ASS/SSA subtitles (SubStation Alpha — common on anime sites).
+    // Reads the [Events] section's "Dialogue:" lines: Start, End, Text (last field).
+    function parseAssText(text) {
+      var cues = [];
+      try {
+        var lines = text.split(/\r?\n/);
+        var fmt = null, inEvents = false;
+        function toSec(t) {
+          // ASS time = H:MM:SS.cs
+          var m = String(t).trim().match(/(\d+):(\d{2}):(\d{2})[.,](\d{1,3})/);
+          if (!m) return null;
+          return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + parseFloat('0.' + m[4]);
+        }
+        for (var i = 0; i < lines.length; i++) {
+          var ln = lines[i];
+          if (/^\[Events\]/i.test(ln)) { inEvents = true; continue; }
+          if (/^\[/.test(ln)) { inEvents = false; }
+          if (!inEvents) continue;
+          if (/^Format:/i.test(ln)) {
+            fmt = ln.replace(/^Format:\s*/i, '').split(',').map(function (s) { return s.trim().toLowerCase(); });
+            continue;
+          }
+          if (/^Dialogue:/i.test(ln)) {
+            var body = ln.replace(/^Dialogue:\s*/i, '');
+            var iStart = fmt ? fmt.indexOf('start') : 1;
+            var iEnd = fmt ? fmt.indexOf('end') : 2;
+            var iText = fmt ? fmt.indexOf('text') : 9;
+            // Text is the LAST field and may contain commas → split with a limit.
+            var parts = body.split(',');
+            var maxIdx = Math.max(iStart, iEnd, iText);
+            var head = parts.slice(0, maxIdx);
+            var txt = parts.slice(maxIdx).join(',');
+            var s = toSec(head[iStart] || parts[1]);
+            var e = toSec(head[iEnd] || parts[2]);
+            if (s == null || e == null) continue;
+            // Strip ASS override tags {\...} and convert \N to newline.
+            txt = txt.replace(/\{[^}]*\}/g, '').replace(/\\N/gi, '\n').trim();
+            if (txt) cues.push({ start: s, end: e, text: txt });
+          }
+        }
+      } catch (e) {}
+      return cues;
     }
 
     // Parse YouTube timedtext (<text start dur>) or TTML (<p begin end>) XML.
@@ -3811,7 +4352,10 @@
       const reader = new FileReader();
       reader.onload = function (ev) {
         const text = ev.target.result;
-        if (file.name.toLowerCase().endsWith('.vtt')) {
+        var _fn = file.name.toLowerCase();
+        if (_fn.endsWith('.ass') || _fn.endsWith('.ssa') || /\[Script Info\]|^Dialogue:/im.test(text)) {
+          customSubtitleCues = parseAssText(text);
+        } else if (_fn.endsWith('.vtt') || /WEBVTT/i.test(text)) {
           customSubtitleCues = parseVttText(text);
         } else {
           customSubtitleCues = parseSrtText(text);
@@ -4233,29 +4777,73 @@
     });
     menuABLoop.addEventListener('click', function () { toggleABLoop(); closeAllPanels(); });
     menuPiP.addEventListener('click', function () { togglePiP(); closeAllPanels(); });
+    // ─── Gather EVERY downloadable/playable source we know about ───
+    // Multi-method (like the best downloaders): (1) direct <video>.src / <source>,
+    // (2) network-sniffed progressive files, (3) captured HLS/DASH manifests,
+    // (4) the fully-detected quality ladder from buildQualityOptions, (5) a
+    // page-source regex sweep. Blob/MSE players (Facebook, YouTube, Twitch…)
+    // have a blob: src that can't be saved — but our sniffer already captured
+    // the real files/streams, so we surface those instead of failing.
+    function collectAllDownloadSources() {
+      var direct = [];      // directly-saveable/playable media URLs (mp4/webm/…)
+      var seen = Object.create(null);
+      function add(u) {
+        if (!u || typeof u !== 'string') return;
+        if (/^blob:/i.test(u)) return;            // blob: can't be downloaded
+        if (u.length < 12) return;
+        if (seen[u]) return; seen[u] = 1;
+        direct.push(u);
+      }
+
+      // Refresh the network buffer so late requests are included.
+      try { pullBackgroundMedia(); } catch (e) {}
+
+      // (1) Direct element sources (skip blob).
+      add(video.currentSrc); add(video.src);
+      try { video.querySelectorAll('source').forEach(function (s) { add(s.src || s.getAttribute('data-src')); }); } catch (e) {}
+      try { if (video.parentElement) video.parentElement.querySelectorAll('source').forEach(function (s) { add(s.src || s.getAttribute('data-src')); }); } catch (e) {}
+
+      // (2) Network-sniffed progressive video files (mp4/webm/…), newest first.
+      var netFiles = (capturedVideoUrls || []).slice().sort(function (a, b) { return (b.time || 0) - (a.time || 0); });
+      netFiles.forEach(function (v) { add(v.url); });
+
+      // (4) The detected quality ladder (FB DASH, source-per-quality sites, etc.).
+      try {
+        if (typeof buildQualityOptions === 'function') buildQualityOptions();
+        (_lastDetectedQualities || []).forEach(function (lv) {
+          if (lv && lv.srcUrl) add(lv.srcUrl);
+        });
+      } catch (e) {}
+
+      // (5) Page-source sweep for direct media URLs with a resolution hint.
+      try {
+        var html = document.documentElement.innerHTML;
+        var re = /https?:\\?\/\\?\/[^"'\s<>\\]+?\.(?:mp4|webm|mkv|m4v|mov)(?:\?[^"'\s<>\\]*)?/gi, mm, n = 0;
+        while ((mm = re.exec(html)) && n < 25) { add(mm[0].replace(/\\\//g, '/')); n++; }
+      } catch (e) {}
+
+      // Manifests (HLS/DASH) are handled separately by the panel.
+      var manifests = (capturedManifests || []).slice();
+      return { direct: direct, manifests: manifests };
+    }
+
     menuDownload.addEventListener('click', function () {
       closeAllPanels();
-      // Collect ALL possible video sources
-      const src = video.currentSrc || video.src || '';
-      const allSources = [];
-      if (src) allSources.push(src);
-      // Also check <source> children
-      video.querySelectorAll('source').forEach(function (s) {
-        const u = s.src || s.getAttribute('data-src') || '';
-        if (u && !allSources.includes(u)) allSources.push(u);
-      });
-      // Check parent for sources too
-      if (video.parentElement) {
-        video.parentElement.querySelectorAll('source').forEach(function (s) {
-          const u = s.src || s.getAttribute('data-src') || '';
-          if (u && !allSources.includes(u)) allSources.push(u);
-        });
-      }
-      if (allSources.length === 0) {
-        showToast('⚠ No video source found');
+      // DRM sites (Netflix/Disney+/Prime/…): the stream is encrypted via EME and
+      // can NEVER be saved — we don't (and legally can't) bypass DRM. Be honest.
+      if (IS_DRM_SITE) {
+        showToast('🔒 This service is DRM-protected — downloading is not possible', 4000);
         return;
       }
-      showDownloadPanel(allSources[0], allSources);
+      var res = collectAllDownloadSources();
+      var primary = res.direct[0] || (res.manifests[0] && res.manifests[0].url) || video.currentSrc || video.src || location.href;
+      // Only truly fail if we found NOTHING at all (not even a manifest/blob).
+      if (!res.direct.length && !res.manifests.length) {
+        // Still open the panel with the yt-dlp / external-player fallbacks — those
+        // work even when no direct file is exposed (e.g. DRM-free MSE streams).
+        showToast('No direct file found — showing stream & external options');
+      }
+      showDownloadPanel(primary, res.direct);
     });
 
     // Ask the background service worker to use Chrome's native download engine.
@@ -4280,26 +4868,56 @@
 
     function downloadViaFetchBlob(url, filename) {
       showToast('⬇ Downloading…');
-      fetch(url, { mode: 'cors' })
+      fetch(url, { mode: 'cors', credentials: 'include' })
         .then(function (response) {
-          if (!response.ok) throw new Error('Network response was not ok');
-          return response.blob();
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          var ct = (response.headers.get('content-type') || '').toLowerCase();
+          // Guard: if the server returned HTML/JSON/text (expired link, login
+          // page, error), DON'T save it as a video (that produced .txt/.html
+          // "downloads" on Facebook). Bail to the external/link fallbacks.
+          if (ct && !/^(video\/|audio\/|application\/(octet-stream|mp4|x-mpegurl|vnd\.apple\.mpegurl|dash\+xml|zip))/.test(ct)) {
+            throw new Error('not-media:' + ct);
+          }
+          return response.blob().then(function (blob) { return { blob: blob, ct: ct }; });
         })
-        .then(function (blob) {
+        .then(function (r) {
+          var blob = r.blob;
+          // Extra guard: tiny blobs are usually error pages, not real video.
+          if (blob.size > 0 && blob.size < 1024 && /text|html|json/.test(r.ct || '')) {
+            throw new Error('too-small');
+          }
+          // Fix the extension to match the real MIME (so it's never .txt).
+          var fn = fixFilenameExt(filename, blob.type || r.ct);
           const blobUrl = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = blobUrl;
-          a.download = filename;
+          a.download = fn;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 5000);
           showToast('✅ Download started!');
         })
-        .catch(function () {
-          // Fetch failed (CORS) — fall back to direct link
+        .catch(function (e) {
+          // Not real media (HTML/JSON/expired) → don't save junk; guide the user.
+          if (e && /not-media|too-small/.test(String(e.message))) {
+            showToast('⚠ That link is not a direct video (expired/protected). Try a "Detected Videos" entry or an external manager.', 4500);
+            return;
+          }
+          // CORS/network — fall back to a direct link (browser handles naming).
           downloadViaLink(url, filename);
         });
+    }
+
+    // Ensure a filename ends with an extension matching its MIME type (never .txt).
+    function fixFilenameExt(filename, mime) {
+      mime = (mime || '').toLowerCase();
+      var ext = /mp4/.test(mime) ? 'mp4' : /webm/.test(mime) ? 'webm' :
+                /matroska|mkv/.test(mime) ? 'mkv' : /quicktime|mov/.test(mime) ? 'mov' :
+                /mpegurl|mpeg-url/.test(mime) ? 'm3u8' : /audio\/mp4|m4a/.test(mime) ? 'm4a' :
+                /audio\/mpeg|mp3/.test(mime) ? 'mp3' : '';
+      if (!ext) return filename; // unknown — leave as-is (already .mp4 by default)
+      return filename.replace(/\.[a-z0-9]{2,5}$/i, '') + '.' + ext;
     }
 
     function downloadViaLink(url, filename) {
@@ -4535,33 +5153,40 @@
       const panel = createElement('div', 'vm-panel vm-download-panel vm-visible');
       panel.style.cssText = 'position:fixed;bottom:50%;left:50%;transform:translate(-50%,50%);z-index:2147483647;min-width:300px;max-width:90vw';
 
-      const label = createElement('div', 'vm-panel-label', 'Download Video');
+      const label = createElement('div', 'vm-panel-label', 'Download / Play external');
       panel.appendChild(label);
 
-      // Show video URL preview
+      var hasDirect = !!(url && !/^blob:/i.test(url) && /^https?:/i.test(url));
+
+      // Show video URL preview (or a hint when only a stream/blob exists).
       const urlPreview = createElement('div', 'vm-panel-item');
       urlPreview.style.cssText = 'font-size:10px;color:var(--vm-gray);word-break:break-all;cursor:default;padding:4px 16px';
-      urlPreview.textContent = url.length > 80 ? url.slice(0, 80) + '…' : url;
+      urlPreview.textContent = hasDirect ? (url.length > 80 ? url.slice(0, 80) + '…' : url)
+                                         : 'This player uses a stream (blob/MSE). Use a Stream/HLS or external option below.';
       panel.appendChild(urlPreview);
       panel.appendChild(createElement('div', 'vm-panel-separator'));
 
-      // Option 1: Native browser download (Chrome downloads engine)
-      const opt1 = createElement('div', 'vm-panel-item');
-      opt1.textContent = '📥 Download (Browser)';
-      opt1.addEventListener('click', function () {
-        panel.remove();
-        if (!downloadViaNative(url, filename, false)) downloadViaFetchBlob(url, filename);
-      });
-      panel.appendChild(opt1);
+      // Option 1: Native browser download (Chrome downloads engine) — only for a direct file.
+      if (hasDirect) {
+        const opt1 = createElement('div', 'vm-panel-item');
+        opt1.textContent = '📥 Download (Browser)';
+        opt1.addEventListener('click', function () {
+          panel.remove();
+          if (!downloadViaNative(url, filename, false)) downloadViaFetchBlob(url, filename);
+        });
+        panel.appendChild(opt1);
+      }
 
-      // Option 2: Save As… (native picker)
-      const opt2 = createElement('div', 'vm-panel-item');
-      opt2.textContent = '💾 Save As… (choose folder)';
-      opt2.addEventListener('click', function () {
-        panel.remove();
-        if (!downloadViaNative(url, filename, true)) downloadViaLink(url, filename);
-      });
-      panel.appendChild(opt2);
+      // Option 2: Save As… (native picker) — only for a direct file.
+      if (hasDirect) {
+        const opt2 = createElement('div', 'vm-panel-item');
+        opt2.textContent = '💾 Save As… (choose folder)';
+        opt2.addEventListener('click', function () {
+          panel.remove();
+          if (!downloadViaNative(url, filename, true)) downloadViaLink(url, filename);
+        });
+        panel.appendChild(opt2);
+      }
 
       // Option HLS: if a streaming manifest is detected, offer the powerful
       // segment-merging downloader (m3u8 → single .ts, AES-128 aware).
@@ -4698,7 +5323,8 @@
               var th = (_lastQualityTarget && /^\d+$/.test(_lastQualityTarget)) ? parseInt(_lastQualityTarget, 10) : 0;
               startHlsDownload(m.url, th, 'videomax-' + Date.now());
             } else {
-              copyText(m.url, '📋 DASH URL copied — use yt-dlp/ffmpeg');
+              // DASH: in-browser merge isn't reliable → hand a ready yt-dlp command.
+              copyText('yt-dlp "' + m.url + '"', '📋 yt-dlp command copied (DASH) — run in terminal');
             }
           });
           panel.appendChild(mItem);
@@ -4755,6 +5381,11 @@
       closeAllPanels();
     });
     menuReset.addEventListener('click', function () { resetEverything(); closeAllPanels(); });
+    menuDiag.addEventListener('click', function () {
+      closeAllPanels();
+      var ok = VMX_LOG.exportTxt();
+      showToast(ok ? '📄 Diagnostics saved to downloads — send me the .txt' : '⚠ Export failed');
+    });
     // [P13] Cinema Mode - dims the entire page except the video
     var cinemaOverlay = null;
     menuFullscreen.addEventListener('click', function () {
@@ -5158,6 +5789,34 @@
     });
     entryWrapper.addEventListener('mouseleave', scheduleEntryIdle);
 
+    // ─── SMART BUTTON VISIBILITY ───
+    // Re-reveal the entry pill whenever the user is actually interacting with the
+    // player (mouse moves over it, or play/pause), then fade again — so it's
+    // always there the moment you want it, but never in the way. Cheap: a
+    // throttled pointer listener on the player box + native media events.
+    function revealEntry() {
+      if (isHudVisible || isDismissed) return;
+      entryWrapper.classList.remove('vm-idle');
+      if (entryWrapper.style.display === 'none') entryWrapper.style.display = '';
+      scheduleEntryIdle();
+    }
+    var _revealThrottle = 0;
+    function onPlayerActivity() {
+      var now = Date.now();
+      if (now - _revealThrottle < 600) return;   // throttle
+      _revealThrottle = now;
+      revealEntry();
+    }
+    try {
+      var _activityTarget = (useFloatingHost ? (container || video) : (container || video));
+      if (_activityTarget && _activityTarget.addEventListener) {
+        _activityTarget.addEventListener('pointermove', onPlayerActivity, { passive: true });
+        _activityTarget.addEventListener('pointerenter', onPlayerActivity, { passive: true });
+      }
+      video.addEventListener('play', revealEntry);
+      video.addEventListener('pause', revealEntry);
+    } catch (e) {}
+
     entryButton.addEventListener('click', function (e) { stopEvent(e); openHUD(); });
     closeButton.addEventListener('click', function (e) { stopEvent(e); closeHUD(); });
     dismissButton.addEventListener('click', function (e) {
@@ -5325,6 +5984,7 @@
       else if (video.duration) video.currentTime = video.duration - 0.1;
     });
     const adCheckInterval = setInterval(function () {
+      if (document.hidden || isDestroyed) return;   // PERF: idle when hidden
       const isAd = !!document.querySelector('.ytp-ad-player-overlay, .ad-showing');
       skipAdButton.classList.toggle('vm-visible', isAd && isHudVisible);
     }, 3000);
@@ -6165,6 +6825,8 @@
       } catch (e) {}
       try { subtitleFileInput.remove(); } catch (e) { /* ignore */ }
       if (cinemaOverlay) { try { cinemaOverlay.remove(); } catch (e) {} cinemaOverlay = null; }
+      try { clearFullscreenFill(); } catch (e) {}
+      try { if (_selfRepairTimer) clearInterval(_selfRepairTimer); } catch (e) {}
       if (hostElement.isConnected) hostElement.remove();
 
       processedVideos.delete(video);
@@ -6227,6 +6889,172 @@
     }
 
     instanceMap.set(video, { host: hostElement, shadow: shadowRoot, applyAR: applyAspectRatio, destroy: destroyPlayer, restore: restoreNativePlayer });
+
+    // LEARN: remember what worked on this site so the next visit is instant.
+    try { SiteProfiles.recordWin({ container: container, video: video, floating: useFloatingHost }); } catch (e) {}
+
+    /* ═══════════════════════════════════════════════════════════════
+     *  SELF-REPAIR ENGINE  (learns how to fix itself per site)
+     *
+     *  Periodically checks the player's HEALTH. If it detects a known failure
+     *  SYMPTOM, it tries REMEDIES one by one, verifies whether the symptom
+     *  cleared, and REMEMBERS (per hostname) which remedy worked — so next time
+     *  the same symptom appears it applies that remedy first (instant self-fix).
+     *  Symptoms covered are the real failures we've seen: black/collapsed video,
+     *  overlay host detached, host mis-positioned, invisible/zero-size button.
+     *  It is conservative: only acts when a symptom is clearly present, backs off
+     *  after repeated tries, and never touches a healthy player.
+     * ═══════════════════════════════════════════════════════════════ */
+    (function selfRepairEngine() {
+      var attemptsBySymptom = Object.create(null);   // symptom -> tries this session
+      var lastActionAt = 0;
+
+      // ── Symptom detectors (return true when the problem is present) ──
+      function rect(el) { try { return el.getBoundingClientRect(); } catch (e) { return null; } }
+      function isPlaying() { try { return !video.paused && video.currentTime > 0 && video.readyState >= 2; } catch (e) { return false; } }
+
+      function symptomBlackVideo() {
+        // Video is "playing" (has frames/time) but its box collapsed or is off
+        // screen → the classic black-screen. videoWidth>0 means frames decode.
+        try {
+          if (!isPlaying() || !video.videoWidth) return false;
+          var r = rect(video); if (!r) return false;
+          var vw = window.innerWidth || 0, vh = window.innerHeight || 0;
+          var collapsed = (r.width < 8 || r.height < 8);
+          var offscreen = (r.bottom <= 0 || r.right <= 0 || r.top >= vh || r.left >= vw);
+          return collapsed || offscreen;
+        } catch (e) { return false; }
+      }
+      function symptomHostDetached() {
+        try { return !hostElement.isConnected; } catch (e) { return false; }
+      }
+      function symptomHostMisplaced() {
+        // Floating host should overlap the video; if it's far off, controls are lost.
+        try {
+          if (!useFloatingHost) return false;
+          var hr = rect(hostElement), vr = rect(video);
+          if (!hr || !vr || vr.width < 20) return false;
+          var noOverlap = (hr.right < vr.left || hr.left > vr.right || hr.bottom < vr.top || hr.top > vr.bottom);
+          var zero = (hr.width < 4 || hr.height < 4);
+          return noOverlap || zero;
+        } catch (e) { return false; }
+      }
+      function symptomButtonDead() {
+        // Entry button exists but has zero rendered size (can't be tapped).
+        try {
+          if (isHudVisible || isDismissed) return false;
+          if (!entryWrapper || entryWrapper.style.display === 'none') return false;
+          var br = rect(entryButton); if (!br) return false;
+          return (br.width < 4 || br.height < 4);
+        } catch (e) { return false; }
+      }
+
+      // ── Remedies (return true if applied; verification happens after) ──
+      var remedies = {
+        // Clear any style we forced on the video and re-run our layout engine.
+        reflowAR: function () { try { clearFullscreenFill(); } catch (e) {} try { applyAspectRatio(); } catch (e) {} return true; },
+        // Strip our transforms/filters entirely (undo anything that broke layout).
+        clearVideoStyles: function () {
+          try {
+            ['transform','transform-origin','object-fit','object-position','position','top','left','width','height','max-width','max-height']
+              .forEach(function (p) { if (video.style && video.style.getPropertyValue(p)) video.style.removeProperty(p); });
+          } catch (e) {}
+          try { applyAspectRatio(); } catch (e) {} return true;
+        },
+        // Remove any fullscreen fill stylesheet (fixes managed-player black screen).
+        dropFsFill: function () { try { clearFullscreenFill(); } catch (e) {} return true; },
+        // Rebuild a detached host and re-sync it.
+        reattachHost: function () {
+          try {
+            if (!hostElement.isConnected) {
+              if (useFloatingHost) { (document.documentElement || document.body).appendChild(hostElement); startFloatSync(); }
+              else if (container && container.appendChild) { container.appendChild(hostElement); }
+            }
+          } catch (e) {} return true;
+        },
+        // Restart the floating-host position sync loop.
+        resyncFloat: function () { try { lastFloatRect = null; startFloatSync(); } catch (e) {} return true; },
+        // Nuclear option: fully rebuild the instance from scratch.
+        rebuild: function () {
+          try {
+            var v = video;
+            processedVideos.delete(v); instanceMap.delete(v);
+            if (_singlePlayerSite) _vmxLiveInstances = Math.max(0, _vmxLiveInstances - 1);
+            destroyPlayer();
+            setTimeout(function () { try { if (v.isConnected) attachPlayer(v); } catch (e) {} }, 120);
+          } catch (e) {} return true;
+        }
+      };
+
+      // Ordered remedy candidates to TRY (cheap→drastic) per symptom.
+      var playbook = {
+        blackVideo:    ['dropFsFill', 'clearVideoStyles', 'reflowAR', 'rebuild'],
+        hostDetached:  ['reattachHost', 'rebuild'],
+        hostMisplaced: ['resyncFloat', 'reattachHost', 'rebuild'],
+        buttonDead:    ['resyncFloat', 'reflowAR', 'rebuild']
+      };
+
+      function detect() {
+        if (symptomBlackVideo())    return 'blackVideo';
+        if (symptomHostDetached())  return 'hostDetached';
+        if (symptomHostMisplaced()) return 'hostMisplaced';
+        if (symptomButtonDead())    return 'buttonDead';
+        return null;
+      }
+
+      function stillBroken(symptom) {
+        switch (symptom) {
+          case 'blackVideo':    return symptomBlackVideo();
+          case 'hostDetached':  return symptomHostDetached();
+          case 'hostMisplaced': return symptomHostMisplaced();
+          case 'buttonDead':    return symptomButtonDead();
+        }
+        return false;
+      }
+
+      function tryRemedy(symptom, remedyName, isRemembered) {
+        var fn = remedies[remedyName];
+        if (!fn) return;
+        lastActionAt = Date.now();
+        vmxDebug('repair', symptom + ' → ' + remedyName + (isRemembered ? ' (remembered)' : ''));
+        try { fn(); } catch (e) {}
+        // Verify shortly after (layout needs a beat to settle).
+        setTimeout(function () {
+          if (isDestroyed) return;
+          var ok = !stillBroken(symptom);
+          try { SiteProfiles.recordFixResult(symptom, remedyName, ok); } catch (e) {}
+          vmxDebug('repair', symptom + ' ' + (ok ? 'FIXED by ' : 'still broken after ') + remedyName);
+        }, 450);
+      }
+
+      var healthTimer = setInterval(function () {
+        if (isDestroyed) { clearInterval(healthTimer); return; }
+        if (document.hidden) return;                 // PERF: idle when hidden
+        if (Date.now() - lastActionAt < 1200) return; // let a remedy settle first
+        var symptom = detect();
+        if (!symptom) return;
+
+        attemptsBySymptom[symptom] = (attemptsBySymptom[symptom] || 0);
+        if (attemptsBySymptom[symptom] >= 5) return;  // back off — avoid loops
+
+        // 1) If we've learned a remedy that fixed this symptom here before, use it.
+        var remembered = null;
+        try { remembered = SiteProfiles.trustedFix(symptom); } catch (e) {}
+        var order = playbook[symptom] || [];
+        var candidate;
+        if (remembered && remedies[remembered]) {
+          candidate = remembered;
+        } else {
+          // 2) Otherwise explore the playbook in order (cheap → drastic).
+          candidate = order[attemptsBySymptom[symptom]] || order[order.length - 1];
+        }
+        attemptsBySymptom[symptom]++;
+        tryRemedy(symptom, candidate, candidate === remembered);
+      }, 1500);
+
+      // Expose so destroyPlayer's cleanup can stop it (it clears on isDestroyed too).
+      _selfRepairTimer = healthTimer;
+    })();
 
   } // ──── END attachPlayer ────
 
@@ -6354,7 +7182,16 @@
     if (!v || processedVideos.has(v) || !v.isConnected) return;
     // Accept slightly smaller players; some sites start tiny then grow.
     if (v.clientWidth > 40 || v.clientHeight > 40 || v.videoWidth > 0 || v.readyState >= 1) {
-      attachPlayer(v);
+      // SAFETY NET: never let an error attaching ONE video stop us from handling
+      // others (or crash the scanner). If attach throws, mark the video as
+      // processed so we don't retry-loop, and record a fail for self-learning.
+      try {
+        attachPlayer(v);
+      } catch (err) {
+        try { processedVideos.add(v); } catch (e) {}
+        try { if (typeof SiteProfiles !== 'undefined') SiteProfiles.recordFail(); } catch (e) {}
+        try { vmxDebug('attach', 'ERROR ' + (err && err.message ? err.message : err)); } catch (e) {}
+      }
     }
   }
 
@@ -6423,6 +7260,84 @@
   window.addEventListener('popstate', function () {
     setTimeout(scanForVideos, 700);
   });
+
+  /* ═══════════════════════════════════════════════════════════════
+   *  DIAGNOSTICS EXPORT HOTKEY  (Ctrl+Alt+D — works anywhere, any site)
+   *  Lets the user export a full diagnostic .txt to send us. Only the top frame
+   *  handles it so we get one clean file. Also exposed on window for power users.
+   * ═══════════════════════════════════════════════════════════════ */
+  try {
+    if (window.top === window) {
+      window.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+          e.preventDefault();
+          var ok = VMX_LOG.exportTxt();
+          try { vmxToastGlobal(ok ? '📄 Diagnostics exported — check downloads' : '⚠ Export failed'); } catch (er) {}
+        }
+      }, true);
+      // Power-user hook: run `__vmxDiag()` in the console to download the log.
+      try { window.__vmxDiag = function () { return VMX_LOG.exportTxt(); }; } catch (e) {}
+    }
+  } catch (e) {}
+
+  // Minimal standalone toast (module scope) — the per-player showToast lives
+  // inside attachPlayer, so we need a tiny one for global events like export.
+  function vmxToastGlobal(msg) {
+    try {
+      var t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = 'position:fixed;left:50%;bottom:40px;transform:translateX(-50%);' +
+        'z-index:2147483647;background:rgba(20,20,28,.96);color:#fff;font:14px/1.4 system-ui,sans-serif;' +
+        'padding:10px 18px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.5);pointer-events:none;max-width:80vw;text-align:center';
+      (document.body || document.documentElement).appendChild(t);
+      setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 2600);
+      setTimeout(function () { try { t.remove(); } catch (e) {} }, 3200);
+    } catch (e) {}
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+   *  SELF-HEALING WATCHDOG (works on ANY site)
+   *  Sites frequently re-render their player, which can (a) detach our overlay
+   *  host from the DOM, or (b) swap in a new <video> we haven't seen. A light
+   *  low-frequency check repairs both automatically so the extension keeps
+   *  working without a reload — the "smart, self-repairing" behaviour.
+   *  Cheap: one querySelectorAll every 2.5s, only acts when something's wrong.
+   * ═══════════════════════════════════════════════════════════════ */
+  (function selfHealWatchdog() {
+    var misses = 0;
+    setInterval(function () {
+      try {
+        // PERF: skip all work while the tab is hidden (saves CPU/battery).
+        if (document.hidden) return;
+        var vids = document.querySelectorAll('video');
+        if (!vids.length) return;
+        var repaired = false;
+        vids.forEach(function (v) {
+          // Skip user-dismissed videos and truly tiny/off ones.
+          if (dismissedVideos && dismissedVideos.has && dismissedVideos.has(v)) return;
+          var inst = instanceMap.get(v);
+          if (inst) {
+            // Attached before — verify its overlay host is still connected.
+            // (Floating hosts live under <html>; in-container hosts under the player.)
+            if (inst.host && !inst.host.isConnected) {
+              // Host was ripped out by a site re-render → rebuild cleanly.
+              try { processedVideos.delete(v); } catch (e) {}
+              try { instanceMap.delete(v); } catch (e) {}
+              tryAttach(v);
+              repaired = true;
+            }
+          } else if (!processedVideos.has(v)) {
+            // A new/replaced <video> appeared without a mutation we caught.
+            if (v.clientWidth > 40 || v.clientHeight > 40 || v.videoWidth > 0 || v.readyState >= 1) {
+              tryAttach(v);
+              repaired = true;
+            }
+          }
+        });
+        misses = repaired ? 0 : (misses + 1);
+      } catch (e) {}
+    }, 2500);
+  })();
 
 })();
 

@@ -39,6 +39,12 @@
     if (/googlevideo\.com\/videoplayback/i.test(u)) return 'file';
     // Extensionless progressive video endpoints (wco.tv / wcostream getvid, etc.)
     if (/\/getvid\?|\/getvidlink|[?&]evid=/i.test(u)) return 'file';
+    // TikTok progressive MP4 (no .mp4 extension): *.tiktokcdn*/…?mime_type=video_mp4 or /aweme/
+    if (/tiktokcdn|tiktokv\.com.*\/(?:aweme|video)|[?&]mime_type=video_mp4/i.test(u)) return 'file';
+    // Instagram / FB CDN progressive: *.cdninstagram.com / scontent*.*.fbcdn.net *.mp4 handled above
+    if (/cdninstagram\.com\/.*\.(?:mp4|webm)/i.test(u)) return 'file';
+    // Dailymotion progressive/HLS handled by .m3u8/.mp4 above; catch its manifest host
+    if (/dm(?:cdn|xleo)\.net\/.*\/(?:manifest|video)/i.test(u)) return 'hls';
     // Reddit CMAF media (v.redd.it/<id>/CMAF_<h>.mp4 handled by .mp4 above)
     return null;
   }
@@ -328,6 +334,93 @@
         }
       });
     } catch (e) {}
+
+    // ── dash.js (window.dashjs / player instances) ──
+    try {
+      // dash.js players commonly stored on elements or window.player / window.dashPlayer.
+      var dashCandidates = [];
+      if (window.player && window.player.getBitrateInfoListFor) dashCandidates.push(window.player);
+      if (window.dashPlayer && window.dashPlayer.getBitrateInfoListFor) dashCandidates.push(window.dashPlayer);
+      // Any global that looks like a dash.js MediaPlayer.
+      for (var gk in window) {
+        try {
+          var g = window[gk];
+          if (g && typeof g === 'object' && typeof g.getBitrateInfoListFor === 'function' && dashCandidates.indexOf(g) === -1) {
+            dashCandidates.push(g);
+          }
+        } catch (e) {}
+      }
+      dashCandidates.forEach(function (dp) {
+        try {
+          var list = dp.getBitrateInfoListFor('video') || [];
+          list.forEach(function (b) { if (b.height) out.push({ height: b.height, kind: 'dashjs' }); });
+        } catch (e) {}
+      });
+    } catch (e) {}
+
+    // ── Shaka Player (getVariantTracks) ──
+    try {
+      var shakaCandidates = [];
+      if (window.shaka && window.shakaPlayer && window.shakaPlayer.getVariantTracks) shakaCandidates.push(window.shakaPlayer);
+      for (var sk in window) {
+        try {
+          var sg = window[sk];
+          if (sg && typeof sg === 'object' && typeof sg.getVariantTracks === 'function' && shakaCandidates.indexOf(sg) === -1) shakaCandidates.push(sg);
+        } catch (e) {}
+      }
+      shakaCandidates.forEach(function (sp) {
+        try {
+          (sp.getVariantTracks() || []).forEach(function (t) { if (t.height) out.push({ height: t.height, kind: 'shaka' }); });
+        } catch (e) {}
+      });
+    } catch (e) {}
+
+    // ── Clappr (getPlaybackQuality / level list) ──
+    try {
+      var clapprCandidates = [];
+      if (window.player && window.player.getPlaybackQuality) clapprCandidates.push(window.player);
+      for (var ck in window) {
+        try {
+          var cg = window[ck];
+          if (cg && typeof cg === 'object' && typeof cg.getPlaybackQuality === 'function' && clapprCandidates.indexOf(cg) === -1) clapprCandidates.push(cg);
+        } catch (e) {}
+      }
+      clapprCandidates.forEach(function (cp) {
+        try {
+          var lv = cp.core && cp.core.activePlayback && cp.core.activePlayback.levels;
+          (lv || []).forEach(function (l) { if (l.height) out.push({ height: l.height, kind: 'clappr' }); });
+        } catch (e) {}
+      });
+    } catch (e) {}
+
+    // ── Flowplayer (qualities / hls levels) ──
+    try {
+      if (window.flowplayer) {
+        var fpEls = document.querySelectorAll('.flowplayer, .fp-player, [data-flowplayer]');
+        fpEls.forEach(function (el) {
+          try {
+            var fp = window.flowplayer(el);
+            if (fp && fp.qualities && fp.qualities.length) {
+              fp.qualities.forEach(function (q) {
+                var m = String(q.label || q).match(/(\d{3,4})/);
+                if (m) out.push({ height: parseInt(m[1], 10), kind: 'flowplayer' });
+              });
+            } else if (fp && fp.hlsjs && fp.hlsjs.levels) {
+              fp.hlsjs.levels.forEach(function (l) { if (l.height) out.push({ height: l.height, kind: 'flowplayer-hls' }); });
+            }
+          } catch (e) {}
+        });
+      }
+    } catch (e) {}
+
+    // ── Generic: ANY hls.js instance stashed on an element (._hls / .hls) ──
+    try {
+      document.querySelectorAll('video, .video-js, [class*="player"]').forEach(function (el) {
+        var h = el._hls || el.hls || (el.player && el.player.hls);
+        if (h && h.levels) h.levels.forEach(function (l) { if (l.height) out.push({ height: l.height, url: (l.url && l.url[0]) || '', kind: 'hlsjs-el' }); });
+      });
+    } catch (e) {}
+
     // De-dupe by height, prefer entries that carry a direct URL.
     var byH = {};
     out.forEach(function (o) { if (!byH[o.height] || (o.url && !byH[o.height].url)) byH[o.height] = o; });
@@ -393,6 +486,69 @@
         });
       }
     } catch (e) {}
+
+    // dash.js — setQualityFor by matching height → qualityIndex
+    try {
+      if (!ok) {
+        var dcs = [];
+        if (window.player && window.player.getBitrateInfoListFor) dcs.push(window.player);
+        for (var dgk in window) { try { var dg = window[dgk]; if (dg && typeof dg === 'object' && typeof dg.getBitrateInfoListFor === 'function' && dcs.indexOf(dg) === -1) dcs.push(dg); } catch (e) {} }
+        dcs.forEach(function (dp) {
+          try {
+            var list = dp.getBitrateInfoListFor('video') || [];
+            for (var i = 0; i < list.length; i++) {
+              if (list[i].height === height) {
+                try { dp.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } }); } catch (e) {}
+                if (dp.setQualityFor) dp.setQualityFor('video', list[i].qualityIndex, true);
+                ok = true; break;
+              }
+            }
+          } catch (e) {}
+        });
+      }
+    } catch (e) {}
+
+    // Shaka — selectVariantTrack for the matching height (disable ABR first)
+    try {
+      if (!ok) {
+        var scs = [];
+        if (window.shakaPlayer && window.shakaPlayer.getVariantTracks) scs.push(window.shakaPlayer);
+        for (var sgk in window) { try { var sg2 = window[sgk]; if (sg2 && typeof sg2 === 'object' && typeof sg2.getVariantTracks === 'function' && scs.indexOf(sg2) === -1) scs.push(sg2); } catch (e) {} }
+        scs.forEach(function (sp) {
+          try {
+            var tracks = sp.getVariantTracks() || [];
+            var match = tracks.filter(function (t) { return t.height === height; })[0];
+            if (match) { try { sp.configure({ abr: { enabled: false } }); } catch (e) {} sp.selectVariantTrack(match, true); ok = true; }
+          } catch (e) {}
+        });
+      }
+    } catch (e) {}
+
+    // Clappr — setPlaybackQuality by level index whose height matches
+    try {
+      if (!ok) {
+        var ccs = [];
+        if (window.player && window.player.getPlaybackQuality) ccs.push(window.player);
+        for (var cgk in window) { try { var cg2 = window[cgk]; if (cg2 && typeof cg2 === 'object' && typeof cg2.setPlaybackQuality === 'function' && ccs.indexOf(cg2) === -1) ccs.push(cg2); } catch (e) {} }
+        ccs.forEach(function (cp) {
+          try {
+            var lv = cp.core && cp.core.activePlayback && cp.core.activePlayback.levels;
+            if (lv) for (var i = 0; i < lv.length; i++) { if (lv[i].height === height) { cp.setPlaybackQuality(lv[i].level != null ? lv[i].level : i); ok = true; break; } }
+          } catch (e) {}
+        });
+      }
+    } catch (e) {}
+
+    // Generic hls.js instance on an element
+    try {
+      if (!ok) {
+        document.querySelectorAll('video, .video-js, [class*="player"]').forEach(function (el) {
+          var h = el._hls || el.hls || (el.player && el.player.hls);
+          if (h && h.levels) for (var i = 0; i < h.levels.length; i++) { if (h.levels[i].height === height) { h.currentLevel = i; ok = true; break; } }
+        });
+      }
+    } catch (e) {}
+
     return ok;
   }
 

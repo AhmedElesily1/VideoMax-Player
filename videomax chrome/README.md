@@ -97,7 +97,7 @@ Install directly from Mozilla Add-ons:
 ## 📦 Installation
 
 ### Chrome / Edge / Brave / Kiwi (PC + Android)
-1. Download **`VideoMax-Pro-v14-Chrome.zip`** and unzip it.
+1. Download **`VideoMax-Pro-v20-Chrome.zip`** and unzip it.
 2. Go to `chrome://extensions` → enable **Developer mode**.
 3. Click **Load unpacked** → select the unzipped folder.
 4. *(Android: Kiwi/Edge → Extensions → load the folder/zip.)*
@@ -107,7 +107,7 @@ Install directly from Mozilla Add-ons (recommended):
 **https://addons.mozilla.org/en-US/firefox/addon/videomax-advanced-video-player/**
 
 Or load it manually:
-1. Download **`VideoMax-Pro-v14-Firefox.zip`**.
+1. Download **`VideoMax-Pro-v20-Firefox.zip`**.
 2. **PC test:** `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → pick `manifest.json`.
 
 ### Userscript (Tampermonkey / Violentmonkey / Greasyfork) — ⚠️ experimental
@@ -117,6 +117,30 @@ Or load it manually:
 
 > Note: the userscript build is still **experimental** — the extension versions
 > are the most stable.
+
+---
+
+## 🌍 Supported sites
+
+**Enhancement (aspect ratio, zoom, speed, filters, gestures…) works on virtually
+any website with an HTML5 `<video>`.** Quality detection and downloading work on
+**DRM‑free** sites, including:
+
+- YouTube, Facebook, Twitch, Reddit, Vimeo, Twitter/X
+- TikTok, Instagram, Dailymotion, Rumble, Streamable
+- News embeds, educational platforms, and most self‑hosted / social videos
+
+### 🔒 DRM services — enhancement works, download does not
+Netflix, Disney+, Amazon Prime Video, Max/HBO, Hulu, Apple TV+, Crunchyroll,
+Shahid, OSN+, and similar services:
+
+- ✅ **Enhancement works** — aspect ratio, zoom, playback speed, brightness,
+  filters, rotation, and gestures all apply to the player normally.
+- ❌ **Download is not possible** — these deliver video **encrypted** through the
+  browser's EME/Widevine/FairPlay layer; the raw file is never exposed, so **no
+  extension can download it**, and bypassing DRM is illegal (DMCA + equivalents)
+  and against store policies. VideoMax Pro **never attempts to bypass DRM** — it
+  simply shows an honest notice if you try to download there.
 
 ---
 
