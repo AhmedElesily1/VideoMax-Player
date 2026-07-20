@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VideoMax Pro</title>
+  <style>
+    :root {
+      --bg: #0f0f13; --surface: #1a1a24; --surface-hover: #262635;
+      --primary: #e50914; --primary-hover: #f90914; --text: #ffffff; --text-dim: #a0a0b0;
+      --border: rgba(255,255,255,0.08); --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); width: 340px; overflow-x: hidden;
+      display: flex; flex-direction: column; height: 500px;
+    }
+    .header {
+      background: var(--surface); padding: 16px; display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header img { width: 32px; height: 32px; border-radius: 8px; }
+    .header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.3px; }
+    .header .version { font-size: 12px; color: var(--text-dim); margin-left: auto; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
+    
+    .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .tab { flex: 1; padding: 12px 0; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-dim); cursor: pointer; transition: all 0.2s; border-bottom: 2px solid transparent; }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    
+    .content-area { flex: 1; overflow-y: auto; padding: 16px; }
+    .panel { display: none; flex-direction: column; gap: 16px; }
+    .panel.active { display: flex; }
+    
+    .setting-group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .setting-item:last-child { border-bottom: none; }
+    .setting-info h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .setting-info p { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+    
+    .toggle { position: relative; width: 44px; height: 24px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.2); transition: .3s; border-radius: 24px; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+    
+    select { background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; font-size: 13px; outline: none; cursor: pointer; }
+    select option { background: var(--surface); color: white; }
+    
+    .btn { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; text-align: center; }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-secondary { background: rgba(255,255,255,0.1); color: white; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.15); }
+    .btn-danger { background: rgba(220, 38, 38, 0.2); color: #fca5a5; }
+    .btn-danger:hover { background: rgba(220, 38, 38, 0.4); color: white; }
+    
+    .shortcuts-list { display: grid; gap: 8px; }
+    .shortcut-row { display: flex; justify-content: space-between; font-size: 12px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px; }
+    .shortcut-key { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; color: var(--primary); }
+    
+    .blacklist-container { display: flex; flex-direction: column; gap: 10px; }
+    .domain-list { max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 8px; border: 1px solid var(--border); }
+    .domain-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .domain-item:last-child { border-bottom: none; }
+    .remove-domain { color: #fca5a5; cursor: pointer; font-weight: bold; font-size: 16px; }
+    .remove-domain:hover { color: red; }
+    
+    .playlist-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .playlist-item:last-child { border-bottom: none; }
+    .playlist-item:hover { background: var(--surface-hover); }
+    .playlist-item img { width: 48px; height: 28px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #000; }
+    .playlist-item .pl-meta { flex: 1; min-width: 0; }
+    .playlist-item .pl-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .playlist-item .pl-host { font-size: 11px; color: var(--text-dim); }
+    .playlist-item .pl-remove { color: #fca5a5; font-weight: bold; font-size: 16px; padding: 0 4px; }
+    .playlist-item .pl-remove:hover { color: red; }
+    .playlist-empty { padding: 20px; text-align: center; font-size: 13px; color: var(--text-dim); }
+
+    .status-box { padding: 12px; border-radius: 8px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .status-box.disabled { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.2); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .disabled .status-dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .status-text { font-size: 13px; font-weight: 600; color: #4ade80; }
+    .disabled .status-text { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="Logo">
+    <h1>VideoMax Pro</h1>
+    <span class="version">v30.1</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-target="settings" data-i18n="tab_settings">Settings</div>
+    <div class="tab" data-target="shortcuts" data-i18n="tab_features">Features</div>
+    <div class="tab" data-target="playlist" data-i18n="tab_playlist">Playlist</div>
+    <div class="tab" data-target="exclude" data-i18n="tab_exclude">Exclude</div>
+  </div>
+
+  <div class="content-area">
+    <!-- Settings Panel -->
+    <div class="panel active" id="settings">
+      <div class="setting-group">
+        <div class="setting-item">
+          <div class="setting-info">
+            <h3 data-i18n="lang_title">Language</h3>
+            <p data-i18n="lang_desc">Extension interface language</p>
+          </div>
+          <select id="langSelect">
+            <option value="en">English</option>
+            <option value="ar">العربية</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <h3 data-i18n="quality_title">Default Quality</h3>
+            <p data-i18n="quality_desc">Preferred resolution</p>
+          </div>
+          <select id="qualitySelect">
+            <option value="auto">Auto</option>
+            <option value="2160">4K (2160p)</option>
+            <option value="1440">2K (1440p)</option>
+            <option value="1080">1080p</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+            <option value="360">360p</option>
+            <option value="lowest" data-i18n="lowest">Lowest</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-item">
+          <div class="setting-info">
+            <h3 data-i18n="data_title">Data Saver</h3>
+            <p data-i18n="data_desc">Cap quality on slow networks</p>
+          </div>
+          <label class="toggle"><input type="checkbox" id="dataToggle"><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-item">
+          <div class="setting-info">
+            <h3 data-i18n="speed_title">Default Speed</h3>
+            <p data-i18n="speed_desc">Starting playback speed</p>
+          </div>
+          <select id="speedSelect">
+            <option value="0">0.25×</option>
+            <option value="1">0.5×</option>
+            <option value="2">0.75×</option>
+            <option value="3">1× (Normal)</option>
+            <option value="4">1.25×</option>
+            <option value="5">1.5×</option>
+            <option value="6">1.75×</option>
+            <option value="7">2×</option>
+            <option value="8">2.5×</option>
+            <option value="9">3×</option>
+            <option value="10">4×</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <h3 data-i18n="orientation_title">Default Orientation</h3>
+            <p data-i18n="orientation_desc">Screen lock on mobile (fullscreen)</p>
+          </div>
+          <select id="orientationSelect">
+            <option value="auto" data-i18n="orient_auto">Auto (match video)</option>
+            <option value="landscape" data-i18n="orient_landscape">Landscape</option>
+            <option value="portrait" data-i18n="orient_portrait">Portrait</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <h3 data-i18n="ar_title">Default Aspect Ratio</h3>
+            <p data-i18n="ar_desc">Starting fit mode for the video</p>
+          </div>
+          <select id="arSelect">
+            <option value="0">Default</option>
+            <option value="1">Fill</option>
+            <option value="2">Stretch</option>
+            <option value="3">Fit</option>
+            <option value="4">Zoom 1.4×</option>
+            <option value="5">Zoom 1.6×</option>
+            <option value="6">Zoom 2.0×</option>
+            <option value="7">4:3</option>
+            <option value="8">16:9</option>
+            <option value="9">2.35:1</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features / Shortcuts Panel -->
+    <div class="panel" id="shortcuts">
+      <div class="setting-group" style="padding: 12px;">
+        <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--primary);" data-i18n="pc_shortcuts">PC Shortcuts</h3>
+        <div class="shortcuts-list">
+          <div class="shortcut-row"><span data-i18n="s_play">Play / Pause</span><span class="shortcut-key">Space</span></div>
+          <div class="shortcut-row"><span data-i18n="s_full">Fullscreen</span><span class="shortcut-key">F</span></div>
+          <div class="shortcut-row"><span data-i18n="s_mute">Mute</span><span class="shortcut-key">M</span></div>
+          <div class="shortcut-row"><span data-i18n="s_seek">Seek ±10s</span><span class="shortcut-key">← / →</span></div>
+          <div class="shortcut-row"><span data-i18n="s_vol">Volume</span><span class="shortcut-key">↑ / ↓</span></div>
+          <div class="shortcut-row"><span data-i18n="s_speed">Playback Speed</span><span class="shortcut-key">S</span></div>
+          <div class="shortcut-row"><span data-i18n="s_subs">Subtitles</span><span class="shortcut-key">C</span></div>
+          <div class="shortcut-row"><span data-i18n="s_shot">Screenshot</span><span class="shortcut-key">T</span></div>
+        </div>
+      </div>
+      <div class="setting-group" style="padding: 12px;">
+        <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--primary);" data-i18n="mobile_gestures">Mobile Touch Gestures</h3>
+        <div class="shortcuts-list">
+          <div class="shortcut-row"><span data-i18n="g_seek">Double tap sides</span><span class="shortcut-key">Seek 10s</span></div>
+          <div class="shortcut-row"><span data-i18n="g_bright">Swipe Left Edge</span><span class="shortcut-key">Brightness</span></div>
+          <div class="shortcut-row"><span data-i18n="g_vol">Swipe Right Edge</span><span class="shortcut-key">Volume</span></div>
+          <div class="shortcut-row"><span data-i18n="g_zoom">Pinch / Spread</span><span class="shortcut-key">Zoom Video</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Playlist Panel -->
+    <div class="panel" id="playlist">
+      <div class="setting-group" id="playlistList" style="max-height:280px;overflow-y:auto;">
+        <!-- Populated dynamically -->
+      </div>
+      <button class="btn" id="openFullPlaylistBtn" data-i18n="open_playlist">Open Full Playlist Player</button>
+      <button class="btn btn-danger" id="clearPlaylistBtn" data-i18n="clear_playlist">Clear Saved Playlist</button>
+    </div>
+
+    <!-- Exclude Panel -->
+    <div class="panel" id="exclude">
+      <div class="status-box" id="statusBox">
+        <div class="status-dot"></div>
+        <div class="status-text" id="statusText" data-i18n="status_active">VideoMax is Active here</div>
+      </div>
+      
+      <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 10px;" data-i18n="exclude_desc">Disable VideoMax completely on specific websites.</p>
+      
+      <div class="blacklist-container">
+        <button class="btn btn-secondary" id="toggleCurrentSiteBtn" data-i18n="toggle_current">Disable on current site</button>
+        
+        <h3 style="font-size: 14px; margin-top: 10px;" data-i18n="blacklisted_sites">Excluded Sites:</h3>
+        <div class="domain-list" id="domainList">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
