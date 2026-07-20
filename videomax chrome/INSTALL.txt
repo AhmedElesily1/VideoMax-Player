@@ -1,3 +1,0 @@
-VideoMax Pro v20 — Chrome / Chromium (PC + Android)
-PC: chrome://extensions -> Developer mode -> Load unpacked (this folder).
-Android: Kiwi Browser / Edge Canary -> Extensions -> load this zip/folder.
